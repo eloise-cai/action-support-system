@@ -277,7 +277,7 @@ bind("userLabel", "click", () => {
     } catch (e) { /* 静默 */ }
   };
   bind("mIdSave", "click", save);
-  input.addEventListener("keydown", e => { if (e.key === "Enter") save(); });
+  input.addEventListener("keydown", e => { if (e.key === "Enter" && !e.isComposing && e.keyCode !== 229) save(); });
 });
 
 cloud.auth.onAuthStateChange((event) => {
@@ -498,6 +498,8 @@ bind("cardsGrid", "click", async (e) => {
 });
 
 bind("cardsGrid", "keydown", (e) => {
+  /* 输入法组词中按回车是在确认拼音/候选词，不是提交——放行会误存（英文/中文输入法都受影响） */
+  if (e.isComposing || e.keyCode === 229) return;
   if (e.key === "Enter" && e.target.dataset && e.target.dataset.addsub) {
     addSubtask(+e.target.dataset.addsub, e.target);
   }
@@ -509,8 +511,10 @@ async function addSubtask(taskId, input) {
   if (!title) { toast("请输入子任务内容", true); return; }
   const rows = await db(cloud.database.from("subtasks").insert({ task_id: taskId, title }).select());
   if (rows && rows[0]) subtasks.push(rows[0]);
-  input.value = "";
   renderAll();
+  /* 输入框被 renderAll 重建：找到新的那个并保持焦点，方便一口气加完所有阶段 */
+  const next = document.querySelector('input[data-addsub="' + taskId + '"]');
+  if (next) next.focus();
 }
 
 bind("addTaskBtn", "click", () => {
@@ -598,7 +602,7 @@ async function quickCapture() {
   } catch (e) { /* db() 已提示 */ }
 }
 bind("captureBtn", "click", quickCapture);
-bind("captureInput", "keydown", (e) => { if (e.key === "Enter") quickCapture(); });
+bind("captureInput", "keydown", (e) => { if (e.key === "Enter" && !e.isComposing && e.keyCode !== 229) quickCapture(); });
 
 /* 完成庆祝：彩纸 + 上行三连音（即时反馈，多巴胺） */
 function celebrate() {
@@ -851,7 +855,7 @@ function renameItem(it) {
     toast("子子任务已更新");
   };
   bind("mRenItemSave", "click", save);
-  input.addEventListener("keydown", e => { if (e.key === "Enter") save(); });
+  input.addEventListener("keydown", e => { if (e.key === "Enter" && !e.isComposing && e.keyCode !== 229) save(); });
 }
 
 async function onSubtaskGridClick(e) {
@@ -1788,6 +1792,49 @@ bind("returnBar", "click", (e) => {
 });
 
 /* ============ 归纳统计 ============ */
+/* 任务 DDL：剩 N 天 / 过期提醒 */
+function ddlInfo(d) {
+  const s = ymd(d);
+  if (!s) return null;
+  const diff = Math.round((new Date(s) - new Date(localDateStr(new Date()))) / 86400000);
+  if (diff < 0) return { text: "已过期 " + (-diff) + " 天", cls: " ddl-over" };
+  if (diff === 0) return { text: "今天截止", cls: " ddl-soon" };
+  if (diff <= 3) return { text: "剩 " + diff + " 天", cls: " ddl-soon" };
+  return { text: "剩 " + diff + " 天", cls: "" };
+}
+function ddlChipHtml(t) {
+  const info = ddlInfo(t.deadline);
+  return '<span class="ddl-chip' + (info ? info.cls : "") + '" data-ddl="' + t.id + '" title="点击设置 / 修改截止日期">⏰ ' +
+    (info ? ymd(t.deadline).slice(5).replace("-", "/") + " · " + info.text : "设置截止日期") + "</span>";
+}
+function openDdlModal(t) {
+  openModal(
+    "<h3>设置截止日期</h3>" +
+    '<label class="modal-label">「' + esc(t.title) + '」的 DDL（到这天前做完；点「清除」去掉）</label>' +
+    '<input id="mDdlDate" type="date" class="modal-input" value="' + (t.deadline ? ymd(t.deadline) : "") + '">' +
+    '<div class="modal-actions">' +
+    '<button class="btn ghost" data-close="1">取消</button>' +
+    '<button class="btn ghost" id="mDdlClear">清除</button>' +
+    '<button class="btn primary" id="mDdlSave">保存</button>' +
+    "</div>"
+  );
+  const save = async v => {
+    const rows = await db(cloud.database.from("tasks").update({ deadline: v }).eq("id", t.id).select());
+    if (rows && rows[0]) Object.assign(t, rows[0]);
+    closeModal();
+    renderAll();
+    if (v) toast("已设置：⏰ " + ymd(v) + " 截止");
+  };
+  bind("mDdlSave", "click", () => save($id("mDdlDate").value || null));
+  bind("mDdlClear", "click", () => save(null));
+}
+bind("statsList", "click", e => {
+  const chip = e.target.closest("[data-ddl]");
+  if (!chip) return;
+  const t = tasks.find(x => x.id === +chip.dataset.ddl);
+  if (t) openDdlModal(t);
+});
+
 function renderStats() {
   const box = $id("statsList");
   if (!tasks.length) {
@@ -1825,6 +1872,7 @@ function renderStats() {
     });
     const undone = totalCnt - doneCnt;
     const pct = totalCnt ? Math.round(doneCnt / totalCnt * 100) : 0;
+    const dinfo = ddlInfo(t.deadline);
     const subLine = subs.length
       ? subs.map(s => {
           const its = items.filter(i => i.subtask_id === s.id);
@@ -1834,9 +1882,9 @@ function renderStats() {
             '<span class="' + (i.done ? "done-mark" : "undone-mark") + '">' + (i.done ? "✓" : "○") + " " + esc(i.title) + "</span>").join("　") + "</span>";
         }).join("　")
       : '<span style="opacity:.6">暂无子任务</span>';
-    return '<div class="stat-row" style="border-left:3px solid var(--accent)">' +
+    return '<div class="stat-row' + (dinfo && dinfo.cls ? ' ddl-row' : '') + '" style="border-left:3px solid var(--accent)">' +
       '<div class="stat-top"><span class="stat-title"><span class="stat-cat">' + cat.icon + ' ' + cat.label + '</span>' + esc(t.title) + '</span>' +
-      '<span class="stat-nums">' +
+      '<span class="stat-nums">' + ddlChipHtml(t) +
       '<span>已完成 <b class="n-done">' + doneCnt + "</b></span>" +
       "<span>未完成 <b class=\"n-undone\">" + undone + "</b></span>" +
       '<span>已用时 <b class="n-time">' + fmtDur(sec) + "</b></span>" +
@@ -1975,7 +2023,7 @@ bind("addRewardBtn", "click", () => {
     toast("已添加心愿：🎁 " + title);
   };
   bind("mRewardSave", "click", save);
-  input.addEventListener("keydown", e => { if (e.key === "Enter") save(); });
+  input.addEventListener("keydown", e => { if (e.key === "Enter" && !e.isComposing && e.keyCode !== 229) save(); });
 });
 
 bind("rewardsList", "click", async (e) => {
@@ -2328,7 +2376,7 @@ bind("addMoneyBtn", "click", () => {
     toast(MONEY_KINDS[kind].name + "已记录：" + fmtYuan(amt));
   };
   bind("mMoneySave", "click", save);
-  bind("mMoneyAmt", "keydown", e => { if (e.key === "Enter") save(); });
+  bind("mMoneyAmt", "keydown", e => { if (e.key === "Enter" && !e.isComposing && e.keyCode !== 229) save(); });
 });
 
 bind("moneyList", "click", async (e) => {
@@ -2825,7 +2873,7 @@ bind("chatSendBtn", "click", () => {
   sendChat();
 });
 bind("chatInput", "keydown", (e) => {
-  if (e.key === "Enter") { e.preventDefault(); if (!chatBusy) sendChat(); }
+  if (e.key === "Enter" && !e.isComposing && e.keyCode !== 229) { e.preventDefault(); if (!chatBusy) sendChat(); }
 });
 bind("chatClearBtn", "click", () => {
   chatMsgs = [];
@@ -3316,7 +3364,7 @@ function renameTask(task) {
     toast("任务已更新");
   };
   bind("mRenSave", "click", save);
-  input.addEventListener("keydown", e => { if (e.key === "Enter") save(); });
+  input.addEventListener("keydown", e => { if (e.key === "Enter" && !e.isComposing && e.keyCode !== 229) save(); });
 }
 
 function renameSubtask(sub) {
@@ -3344,7 +3392,7 @@ function renameSubtask(sub) {
     toast("子任务已更新");
   };
   bind("mRenSubSave", "click", save);
-  input.addEventListener("keydown", e => { if (e.key === "Enter") save(); });
+  input.addEventListener("keydown", e => { if (e.key === "Enter" && !e.isComposing && e.keyCode !== 229) save(); });
 }
 bind("modalOverlay", "click", (e) => {
   if (e.target === $id("modalOverlay")) closeModal();

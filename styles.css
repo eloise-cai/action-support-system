@@ -1305,6 +1305,20 @@ main { max-width: 1100px; margin: 0 auto; padding: 22px 18px 80px; }
 .stats-split { display: grid; grid-template-columns: 1fr 1fr; gap: 22px; align-items: start; }
 @media (max-width: 1080px) { .stats-split { grid-template-columns: 1fr; } }
 
+/* ---------- 任务 DDL ---------- */
+.ddl-chip {
+  display: inline-flex; align-items: center;
+  font-size: 12px; color: var(--text-sub);
+  background: rgba(255, 255, 255, .06);
+  border: 1px dashed rgba(255, 255, 255, .18);
+  border-radius: 10px; padding: 2px 9px;
+  cursor: pointer; transition: color .15s, border-color .15s;
+}
+.ddl-chip:hover { color: #fff; border-color: var(--accent); }
+.ddl-chip.ddl-soon { color: #ffb44f; background: rgba(255, 180, 79, .12); border: 1px solid rgba(255, 180, 79, .4); }
+.ddl-chip.ddl-over { color: #ff7b7b; background: rgba(229, 72, 77, .12); border: 1px solid rgba(229, 72, 77, .4); }
+.stat-row.ddl-row { border-left-color: var(--orange) !important; }
+
 /* ---------- 长线任务：手账式月历时间线 ---------- */
 .lt-cal {
   background: var(--card);
