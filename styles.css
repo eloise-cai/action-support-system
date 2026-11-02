@@ -1525,3 +1525,5 @@ body.theme-retro {
 @media (max-width: 640px) {
   .ci-cell { width: 24px; height: 24px; font-size: 10px; border-radius: 6px; }
 }
+.ci-name { cursor: pointer; border-radius: 6px; padding: 1px 4px; margin-left: -4px; }
+.ci-name:hover { background: rgba(255, 255, 255, .06); color: var(--accent); }

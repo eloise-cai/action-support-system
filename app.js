@@ -2582,7 +2582,7 @@ function renderCheckins() {
         (checked ? "✓" : d) + "</button>";
     }
     return '<div class="checkin-row">' +
-      '<div class="ci-top"><span class="ci-name">' + esc(it.name) + '</span>' +
+      '<div class="ci-top"><span class="ci-name" data-cirename="' + it.id + '" title="点击修改名称">' + esc(it.name) + '</span>' +
       '<span class="ci-cnt">本月 ' + monthCnt + " / " + dim + ' 天</span>' +
       '<button class="sub-del" data-cidel="' + it.id + '" title="删除打卡项">✕</button></div>' +
       '<div class="ci-grid">' + cells + "</div></div>";
@@ -2618,6 +2618,39 @@ bind("addCheckinBtn", "click", () => {
 const ciListEl = $id("checkinList");
 if (ciListEl) {
   ciListEl.addEventListener("click", async e => {
+    const ren = e.target.closest("[data-cirename]");
+    if (ren) {
+      const it = checkinItems.find(x => x.id == ren.dataset.cirename);
+      if (!it) return;
+      openModal(
+        "<h3>修改打卡项目名称</h3>" +
+        '<label class="modal-label">新名称</label>' +
+        '<input id="mCiRename" class="modal-input" maxlength="20" value="' + esc(it.name) + '">' +
+        '<div class="modal-actions">' +
+        '<button class="btn ghost" data-close="1">取消</button>' +
+        '<button class="btn primary" id="mCiRenameSave">保存</button>' +
+        "</div>"
+      );
+      const input = $id("mCiRename");
+      input.focus();
+      input.select();
+      const save = async () => {
+        const name = input.value.trim();
+        if (!name) { toast("名称不能为空", true); return; }
+        if (name === it.name) { closeModal(); return; }
+        const rows = await db(cloud.database.from("checkin_items").update({ name }).eq("id", it.id).select());
+        if (rows && rows[0]) {
+          const i = checkinItems.findIndex(x => x.id === it.id);
+          if (i >= 0) checkinItems[i] = rows[0];
+        }
+        closeModal();
+        renderCheckins();
+        toast("已改名：" + name);
+      };
+      bind("mCiRenameSave", "click", save);
+      input.addEventListener("keydown", e2 => { if (e2.key === "Enter" && !e2.isComposing && e2.keyCode !== 229) save(); });
+      return;
+    }
     const del = e.target.closest("[data-cidel]");
     if (del) {
       const it = checkinItems.find(x => x.id == del.dataset.cidel);
