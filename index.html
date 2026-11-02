@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>行动支持系统</title>
+<link rel="stylesheet" href="styles.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🍅</text></svg>">
+</head>
+<body>
+
+<!-- 登录视图 -->
+<div id="loginView" class="login-view hidden">
+  <div class="login-card">
+    <div class="login-logo">🍅</div>
+    <h1>行动支持系统</h1>
+    <p class="login-sub">任务 · 番茄钟 · 日程 · 心理 · 积分</p>
+    <div class="form-row">
+      <input id="phoneInput" type="tel" maxlength="11" placeholder="请输入 11 位手机号" autocomplete="tel">
+    </div>
+    <div class="form-row code-row">
+      <input id="codeInput" type="text" inputmode="numeric" maxlength="6" placeholder="短信验证码">
+      <button id="sendCodeBtn" type="button" class="btn ghost">获取验证码</button>
+    </div>
+    <p id="phoneError" class="field-error"></p>
+    <p id="loginError" class="field-error"></p>
+    <button id="loginBtn" class="btn primary block">登录 / 注册</button>
+    <p class="login-tip">首次验证登录将自动注册，数据云端同步，多设备可用</p>
+  </div>
+</div>
+
+<!-- 主应用 -->
+<div id="appView" class="app-view hidden">
+  <header class="topbar">
+    <div class="brand">⚡ 行动支持系统</div>
+    <div class="top-actions">
+      <span id="ptsChip" class="pts-chip">⭐ 0</span>
+      <span id="userLabel" class="user-label"></span>
+      <button id="logoutBtn" class="btn ghost small">退出</button>
+    </div>
+  </header>
+
+  <nav class="tabs">
+    <button class="tab active" data-tab="cards">任务列表</button>
+    <button class="tab" data-tab="layers">分层卡片</button>
+    <button class="tab" data-tab="stats">归纳统计</button>
+    <button class="tab" data-tab="month">月历</button>
+    <button class="tab" data-tab="points">积分奖励</button>
+    <button class="tab" data-tab="money">每周收支</button>
+    <button class="tab" data-tab="schedule">每日日程</button>
+    <button class="tab" data-tab="mind">心理</button>  </nav>
+
+  <main>
+    <!-- 任务卡片 -->
+    <section id="tab-cards" class="tab-pane">
+      <div class="pane-head">
+        <div>
+          <h2>任务列表</h2>
+          <p class="pane-desc">起不来就「只做 2 分钟」，玩完回来点「上次停在这里」接上。默认只看今天最重要的 3 件，减少选择消耗</p>
+        </div>
+        <button id="addTaskBtn" class="btn primary">＋ 新建任务</button>
+      </div>
+      <div id="returnBar" class="return-bar hidden"></div>
+      <div class="quick-bar">
+        <button id="doNowBtn" class="btn donow">▶ 现在就做</button>
+        <button id="sparkBtn" class="btn spark">⚡ 只做 2 分钟</button>
+        <div class="capture-row">
+          <input id="captureInput" class="modal-input" placeholder="一句话记事，如：学英语：背单词 15分钟" maxlength="60">
+          <button id="captureBtn" class="btn primary">收进卡片</button>
+        </div>
+      </div>
+      <p class="spark-tip">「只做 2 分钟」不是开始工作，是碰一下 —— 到点你随时可以走。有出口，大脑才肯进去。</p>
+      <div class="mode-switch">
+        <button id="modeTodayBtn" class="mode-btn active">🎯 今日三件事</button>
+        <button id="modeAllBtn" class="mode-btn">全部任务</button>
+      </div>
+      <div id="cardsGrid" class="cards-grid"></div>
+    </section>
+
+    <!-- 分层卡片：所有子任务平铺成卡片 -->
+    <section id="tab-layers" class="tab-pane hidden">
+      <div class="pane-head">
+        <div>
+          <h2>分层卡片</h2>
+          <p class="pane-desc">每个子任务一张卡片，卡内可继续拆子子任务；点子子任务小卡进入它的规划与番茄钟</p>
+        </div>
+      </div>
+      <div class="layers-toolbar">
+        <input id="layersSearch" class="modal-input" placeholder="搜索卡片名称…" style="max-width:240px">
+        <button id="addLayerCardBtn" class="btn primary">＋ 新建卡片</button>
+      </div>
+      <div id="layersGrid" class="cards-grid"></div>
+    </section>
+
+    <!-- 归纳统计 -->
+    <section id="tab-stats" class="tab-pane hidden">
+      <div class="pane-head">
+        <div>
+          <h2>归纳统计</h2>
+          <p class="pane-desc">各任务标题下的完成情况与累计用时；进度优先按子子任务计（没拆的子任务按自身计）</p>
+        </div>
+      </div>
+      <div id="statsList" class="stats-list"></div>
+    </section>
+
+    <!-- 积分奖励 -->
+    <section id="tab-points" class="tab-pane hidden">
+      <div class="pane-head">
+        <div>
+          <h2>积分奖励</h2>
+          <p class="pane-desc">完成子任务、清空任务、专注计时都赚积分；攒够了就兑换你给自己设的心愿奖励</p>
+        </div>
+        <button id="addRewardBtn" class="btn primary">＋ 添加奖励</button>
+      </div>
+      <div class="pts-hero">
+        <div class="pts-balance"><span id="ptsBalance">0</span><small>可用积分</small></div>
+        <div class="pts-stats">
+          <span>累计获得 <b id="ptsEarned">0</b></span>
+          <span>已兑换 <b id="ptsSpent">0</b></span>
+          <span>今日获得 <b id="ptsToday">0</b></span>
+        </div>
+      </div>
+      <div class="pts-rules">赚分规则：完成子任务 <b>+10</b> · 子任务全清空 <b>+5</b> · 完成子子任务 <b>+3</b> · 专注每 5 分钟 <b>+1</b>（取消完成会扣回，不自欺）</div>
+      <h3 class="pts-sub-title">🏅 徽章墙 <small style="font-weight:400;color:var(--text-sub);font-size:12px">按周期点亮，下个周期没做到就会熄灭</small></h3>
+      <div id="badgeWall" class="badge-wall"></div>
+      <h3 class="pts-sub-title">🎁 我的心愿奖励</h3>
+      <div id="rewardsList" class="rewards-list"></div>
+      <h3 class="pts-sub-title">📜 积分记录</h3>
+      <div id="pointsLog" class="points-log"></div>
+    </section>
+
+    <!-- 月历 -->
+    <section id="tab-month" class="tab-pane hidden">
+      <div class="pane-head">
+        <div>
+          <h2>月历</h2>
+          <p class="pane-desc">每天一个方格，完成的子任务越多颜色越深；往下看本月专注与目标进度</p>
+        </div>
+      </div>
+      <div class="date-nav">
+        <button id="prevMonthBtn" class="btn ghost small">‹</button>
+        <span id="monthLabel" class="date-label" style="min-width:110px;text-align:center"></span>
+        <button id="nextMonthBtn" class="btn ghost small">›</button>
+        <button id="thisMonthBtn" class="btn ghost small">本月</button>
+      </div>
+      <div class="heat-wrap">
+        <div id="heatWeek" class="heat-week"><span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span><span>日</span></div>
+        <div id="heatGrid" class="heat-grid"></div>
+        <div class="heat-legend">少
+          <span class="heat-cell lv0"></span><span class="heat-cell lv1"></span><span class="heat-cell lv2"></span><span class="heat-cell lv3"></span><span class="heat-cell lv4"></span>
+        多</div>
+      </div>
+      <div class="month-stats">
+        <div class="mstat-card">
+          <div class="mstat-title">⏱ 月专注时长</div>
+          <div class="mstat-big" id="mFocusTotal">0</div>
+          <div class="mstat-sub">日均 <b id="mFocusAvg">0分钟</b> · 共 <b id="mFocusDays">0</b> 天有专注</div>
+        </div>
+        <div class="mstat-card">
+          <div class="mstat-title">✅ 月任务完成</div>
+          <div class="mstat-big" id="mDoneCnt">0 <small>个</small></div>
+          <div class="mstat-sub">完成率 <b id="mDoneRate">0%</b> · 日均完成 <b id="mDoneAvg">0</b> 个</div>
+        </div>
+      </div>
+      <div class="pane-head" style="margin-top:8px">
+        <div>
+          <h2 style="font-size:18px">🎯 月目标</h2>
+          <p class="pane-desc">给自己定几个本月小目标；可关联任务，自动按已完成子任务数计进度</p>
+        </div>
+        <button id="addGoalBtn" class="btn primary">＋ 新建目标</button>
+      </div>
+      <div id="goalsList" class="goals-list"></div>
+    </section>
+
+    <!-- 每周收支 -->
+    <section id="tab-money" class="tab-pane hidden">
+      <div class="pane-head">
+        <div>
+          <h2>每周收支</h2>
+          <p class="pane-desc">记录每天的收入与开支，按周统计；看得见的数字比感觉更可靠</p>
+        </div>
+        <button id="addMoneyBtn" class="btn primary">＋ 记一笔</button>
+      </div>
+      <div class="date-nav">
+        <button id="prevWeekBtn" class="btn ghost small">‹</button>
+        <span id="weekLabel" class="date-label" style="min-width:190px;text-align:center"></span>
+        <button id="nextWeekBtn" class="btn ghost small">›</button>
+        <button id="thisWeekBtn" class="btn ghost small">本周</button>
+      </div>
+      <div class="money-summary">
+        <div class="money-sum-card in"><div class="money-sum-t">本周收入</div><div class="money-sum-v" id="weekIncome">¥0.00</div></div>
+        <div class="money-sum-card out"><div class="money-sum-t">本周支出</div><div class="money-sum-v" id="weekExpense">¥0.00</div></div>
+        <div class="money-sum-card net"><div class="money-sum-t">本周结余</div><div class="money-sum-v" id="weekNet">¥0.00</div></div>
+      </div>
+      <div class="money-chart-wrap">
+        <div id="moneyChart" class="money-chart"></div>
+        <div class="money-chart-days"><span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span><span>日</span></div>
+      </div>
+      <div id="moneyList" class="money-list"></div>
+    </section>
+
+    <!-- 每日日程 -->
+    <section id="tab-schedule" class="tab-pane hidden">
+      <div class="pane-head">
+        <div>
+          <h2>每日日程</h2>
+          <p class="pane-desc">番茄钟计时与当日 24 小时日程对应，可写入日程事项</p>
+        </div>
+        <button id="addEventBtn" class="btn primary">＋ 添加日程</button>
+      </div>
+      <div class="date-nav">
+        <button id="prevDayBtn" class="btn ghost small">‹</button>
+        <input id="datePicker" type="date">
+        <button id="nextDayBtn" class="btn ghost small">›</button>
+        <button id="todayBtn" class="btn ghost small">今天</button>
+        <span id="dateLabel" class="date-label"></span>
+      </div>
+      <div class="timeline-wrap">
+        <div id="timeline" class="timeline"></div>
+      </div>
+    </section>
+  </main>
+
+  <!-- 心理：AI 对话 / ABC 情绪记录 / 情绪急救包 -->
+  <section id="tab-mind" class="tab-pane hidden">
+    <div class="pane-head">
+      <div>
+        <h2>心理</h2>
+        <p class="pane-desc">和 AI 说说心事 · 记录 ABC 情绪 · 需要时打开情绪急救包</p>
+      </div>
+    </div>
+    <div class="mind-subtabs">
+      <button class="mind-sub active" data-mind="chat">💬 AI 树洞</button>
+      <button class="mind-sub" data-mind="abc">📝 ABC 记录</button>
+      <button class="mind-sub" data-mind="aid">🧰 情绪急救包</button>
+    </div>
+
+    <div id="mind-chat" class="mind-pane">
+      <div class="chat-bar">
+        <select id="chatModelSel" class="modal-input" style="max-width:180px"></select>
+        <button id="chatClearBtn" class="btn ghost small">新对话</button>
+      </div>
+      <div id="chatMsgs" class="chat-msgs">
+        <div class="chat-empty">想说什么都可以，这里没有评判 🌱<br>也可以直接告诉我：今天发生了什么、你现在的感受。</div>
+      </div>
+      <div class="chat-input-row">
+        <input id="chatInput" class="modal-input" placeholder="说说此刻的心情…（回车发送）" maxlength="800">
+        <button id="chatSendBtn" class="btn primary">发送</button>
+      </div>
+      <p class="chat-tip">AI 陪伴不能替代专业治疗；若你正处于危机中，请拨打全国心理援助热线 <b>12356</b> 或 120。</p>
+    </div>
+
+    <div id="mind-abc" class="mind-pane hidden">
+      <div class="abc-layout">
+        <div class="abc-card">
+          <h3>记下这一次情绪（ABC）</h3>
+        <div class="abc-row2">
+          <div>
+            <label class="modal-label">日期</label>
+            <input id="abcDate" type="date" class="modal-input">
+          </div>
+          <div>
+            <label class="modal-label">情绪标签</label>
+            <select id="abcEmotion" class="modal-input">
+              <option>焦虑</option><option>烦躁</option><option>低落</option><option>愤怒</option>
+              <option>委屈</option><option>紧张</option><option>愧疚</option><option>疲惫</option>
+              <option>迷茫</option><option>平静</option><option>开心</option>
+            </select>
+          </div>
+        </div>
+        <label class="modal-label">强度：<span id="abcIntVal">6</span> / 10</label>
+        <input id="abcIntensity" type="range" min="1" max="10" value="6" style="width:100%">
+        <label class="modal-label">A · 发生了什么事？（只写事实）</label>
+        <textarea id="abcA" class="modal-textarea" style="min-height:56px" placeholder="例：报告交上去后，领导只回了“再说”"></textarea>
+        <label class="modal-label">B · 我当时的想法是什么？（自动冒出的念头）</label>
+        <textarea id="abcB" class="modal-textarea" style="min-height:56px" placeholder="例：他是不是觉得我做得很差，我要被否定了"></textarea>
+        <label class="modal-label">C · 结果：我的情绪和行为</label>
+        <textarea id="abcC" class="modal-textarea" style="min-height:56px" placeholder="例：心慌、反复刷消息，一下午没法干别的"></textarea>
+        <div class="modal-actions" style="margin-top:14px">
+          <button id="abcSaveBtn" class="btn primary block">保存这条记录</button>
+        </div>
+        </div>
+        <div class="abc-side">
+          <h3 class="abc-list-title">过去的记录</h3>
+          <div id="abcList" class="abc-list"><div class="stats-empty">还没有记录</div></div>
+        </div>
+      </div>
+    </div>
+
+    <div id="mind-aid" class="mind-pane hidden">
+      <p class="aid-lead">情绪上头的瞬间，先让身体冷静下来。选一个小练习 👇</p>
+      <div id="aidGrid" class="aid-grid"></div>
+    </div>
+  </section>
+
+  <!-- 分层页面：以子任务为标题的卡片 -->
+  <section id="layerView" class="layer-view hidden">
+    <div class="layer-head">
+      <button id="layerBackBtn" class="btn ghost small">‹ 返回</button>
+      <div class="layer-head-txt">
+        <h2 id="layerTitle"></h2>
+        <p class="pane-desc">每张卡片以子任务为标题，卡内是子子任务小卡；点击小卡进入它自己的规划与番茄钟</p>
+      </div>
+    </div>
+    <div id="layerGrid" class="cards-grid"></div>
+  </section>
+</div>
+
+<!-- 番茄钟悬浮球 -->
+<div id="pomoFloat" class="pomo-float hidden">
+  <span class="pomo-float-icon">🍅</span>
+  <span id="pomoFloatTime">25:00</span>
+</div>
+
+<!-- 点火 / 分级休息 / 回归仪式 浮层 -->
+<div id="flowLayer" class="flow-layer hidden"></div>
+<div id="restBar" class="rest-bar hidden"></div>
+
+<!-- 弹窗层 -->
+<div id="modalOverlay" class="modal-overlay hidden">
+  <div id="modalBox" class="modal-box"></div>
+</div>
+
+<div id="toast" class="toast hidden"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@tencent-ai/workbuddy-cloud-sdk@dev/lib/index.global.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
