@@ -53,6 +53,8 @@ try { cardsMode = localStorage.getItem("pomo_cards_mode") === "all" ? "all" : "t
 let pickSkip = new Set(); // 「换一个」时暂时跳过的子任务
 
 function $id(id) { return document.getElementById(id); }
+/* 静态页可能被浏览器缓存旧版 HTML：元素缺失时 bind 不报错，页面其余功能照常 */
+function bind(id, evt, fn) { const el = $id(id); if (el) el.addEventListener(evt, fn); }
 function esc(s) {
   return String(s == null ? "" : s).replace(/[&<>"']/g, c => ({
     "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
@@ -98,7 +100,7 @@ function showApp() {
   $id("appView").classList.remove("hidden");
 }
 
-$id("sendCodeBtn").addEventListener("click", async () => {
+bind("sendCodeBtn", "click", async () => {
   const phone = $id("phoneInput").value.trim();
   if (!/^1\d{10}$/.test(phone)) {
     $id("phoneError").textContent = "请输入正确的 11 位手机号";
@@ -125,7 +127,7 @@ $id("sendCodeBtn").addEventListener("click", async () => {
   }, 1000);
 });
 
-$id("loginBtn").addEventListener("click", async () => {
+bind("loginBtn", "click", async () => {
   const phone = $id("phoneInput").value.trim();
   const code = $id("codeInput").value.trim();
   if (!/^1\d{10}$/.test(phone)) { $id("phoneError").textContent = "请输入正确的 11 位手机号"; return; }
@@ -150,7 +152,7 @@ $id("loginBtn").addEventListener("click", async () => {
   await boot();
 });
 
-$id("logoutBtn").addEventListener("click", async () => {
+bind("logoutBtn", "click", async () => {
   if (timer) stopTimer(false);
   await cloud.auth.signOut();
 });
@@ -232,7 +234,7 @@ function updateUserLabel() {
   }
 }
 
-$id("userLabel").addEventListener("click", () => {
+bind("userLabel", "click", () => {
   if (!userCode) return;
   openModal(
     "<h3>我的 ID</h3>" +
@@ -247,7 +249,7 @@ $id("userLabel").addEventListener("click", () => {
   const input = $id("mIdInput");
   input.focus();
   input.select();
-  $id("mIdCopy").addEventListener("click", () => {
+  bind("mIdCopy", "click", () => {
     const ok = () => toast("已复制：" + userCode);
     if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(userCode).then(ok, ok);
     else ok();
@@ -270,7 +272,7 @@ $id("userLabel").addEventListener("click", () => {
       toast("ID 已改为：🪪 " + userCode);
     } catch (e) { /* 静默 */ }
   };
-  $id("mIdSave").addEventListener("click", save);
+  bind("mIdSave", "click", save);
   input.addEventListener("keydown", e => { if (e.key === "Enter") save(); });
 });
 
@@ -408,7 +410,7 @@ function renderCards() {
 }
 
 // 卡片区事件委托（任务级 + 今日三件事卡片 + 子任务级共用一条链，避免重复弹窗）
-$id("cardsGrid").addEventListener("click", async (e) => {
+bind("cardsGrid", "click", async (e) => {
   const layerBtn = e.target.closest("[data-layer]");
   const renTask = e.target.closest("[data-renametask]");
   const delTask = e.target.closest("[data-deltask]");
@@ -491,7 +493,7 @@ $id("cardsGrid").addEventListener("click", async (e) => {
   } catch (err) { /* db() 已提示 */ }
 });
 
-$id("cardsGrid").addEventListener("keydown", (e) => {
+bind("cardsGrid", "keydown", (e) => {
   if (e.key === "Enter" && e.target.dataset && e.target.dataset.addsub) {
     addSubtask(+e.target.dataset.addsub, e.target);
   }
@@ -507,7 +509,7 @@ async function addSubtask(taskId, input) {
   renderAll();
 }
 
-$id("addTaskBtn").addEventListener("click", () => {
+bind("addTaskBtn", "click", () => {
   openModal(
     "<h3>新建任务</h3>" +
     '<label class="modal-label">任务标题（如：学英语）</label>' +
@@ -523,7 +525,7 @@ $id("addTaskBtn").addEventListener("click", () => {
   );
   const getLevel = bindLevelPicker("mid");
   const getCat = bindCategoryPicker("work");
-  $id("mTaskSave").addEventListener("click", async () => {
+  bind("mTaskSave", "click", async () => {
     const title = $id("mTaskTitle").value.trim();
     if (!title) { toast("请输入任务标题", true); return; }
     const maxSort = tasks.reduce((a, b) => Math.max(a, b.sort_order || 0), 0);
@@ -537,7 +539,7 @@ $id("addTaskBtn").addEventListener("click", () => {
 
 /* ============ 降低启动成本：现在就做 / 今日三件事 / 一句话捕获 ============ */
 /* 「现在就做」：0 决策——有进行中的计时就接着来，否则系统替你挑一个并直接开始计时 */
-$id("doNowBtn").addEventListener("click", () => {
+bind("doNowBtn", "click", () => {
   if (timer) {
     const s = subtasks.find(x => x.id === timer.subtaskId);
     if (s) { openSubtaskModal(s, true); return; }
@@ -547,8 +549,8 @@ $id("doNowBtn").addEventListener("click", () => {
   openSubtaskModal(s, true);
 });
 
-$id("modeTodayBtn").addEventListener("click", () => { cardsMode = "today"; try { localStorage.setItem("pomo_cards_mode", "today"); } catch (e) {} renderCards(); });
-$id("modeAllBtn").addEventListener("click", () => { cardsMode = "all"; try { localStorage.setItem("pomo_cards_mode", "all"); } catch (e) {} renderCards(); });
+bind("modeTodayBtn", "click", () => { cardsMode = "today"; try { localStorage.setItem("pomo_cards_mode", "today"); } catch (e) {} renderCards(); });
+bind("modeAllBtn", "click", () => { cardsMode = "all"; try { localStorage.setItem("pomo_cards_mode", "all"); } catch (e) {} renderCards(); });
 
 /* 一句话捕获：解析「任务：子任务 15分钟」/「背单词15分钟」/「整理半小时」 */
 function parseCapture(text) {
@@ -591,8 +593,8 @@ async function quickCapture() {
     toast("已收进「" + task.title + "」：" + p.subName + (p.minutes ? "（建议 " + p.minutes + " 分钟）" : ""));
   } catch (e) { /* db() 已提示 */ }
 }
-$id("captureBtn").addEventListener("click", quickCapture);
-$id("captureInput").addEventListener("keydown", (e) => { if (e.key === "Enter") quickCapture(); });
+bind("captureBtn", "click", quickCapture);
+bind("captureInput", "keydown", (e) => { if (e.key === "Enter") quickCapture(); });
 
 /* 完成庆祝：彩纸 + 上行三连音（即时反馈，多巴胺） */
 function celebrate() {
@@ -645,7 +647,7 @@ function exitLayer() {
   document.querySelector("main").classList.remove("hidden");
 }
 
-$id("layerBackBtn").addEventListener("click", exitLayer);
+bind("layerBackBtn", "click", exitLayer);
 
 function renderLayer() {
   const task = tasks.find(t => t.id === currentTaskId);
@@ -765,16 +767,16 @@ function openItemModal(it) {
   }
   renderTimerFace();
 
-  $id("mIPlanSave").addEventListener("click", async () => {
+  bind("mIPlanSave", "click", async () => {
     const plan = $id("mIPlan").value;
     const rows = await db(cloud.database.from("subtask_items").update({ plan }).eq("id", it.id).select());
     if (rows && rows.length) Object.assign(it, rows[0]);
     toast("规划已保存");
   });
 
-  $id("mRenameItem").addEventListener("click", () => renameItem(it));
+  bind("mRenameItem", "click", () => renameItem(it));
 
-  $id("mDelItemBtn").addEventListener("click", async () => {
+  bind("mDelItemBtn", "click", async () => {
     const ok = await confirmDialog({
       title: "删除子子任务",
       desc: "「" + esc(it.title) + "」删除后无法恢复，确定吗？",
@@ -788,7 +790,7 @@ function openItemModal(it) {
     renderAll();
   });
 
-  $id("pomoDurs").addEventListener("click", (e) => {
+  bind("pomoDurs", "click", (e) => {
     const b = e.target.closest(".pomo-dur-btn");
     if (!b || timer.running) return;
     setTimerDuration(+b.dataset.dur);
@@ -797,9 +799,9 @@ function openItemModal(it) {
     renderTimerFace();
   });
 
-  $id("pomoStartBtn").addEventListener("click", () => { startTimer(); });
+  bind("pomoStartBtn", "click", () => { startTimer(); });
 
-  $id("pomoStopBtn").addEventListener("click", () => {
+  bind("pomoStopBtn", "click", () => {
     syncTimer();
     if (timerElapsedSec() < 1) { toast("还没有开始计时", true); return; }
     const elapsed = Math.min(timer.total, Math.round(timerElapsedSec()));
@@ -809,7 +811,7 @@ function openItemModal(it) {
     if (elapsed >= 300 && s) setTimeout(() => openRest(s), 400); // 干了一段了，先安排休息再谈回来
   });
 
-  $id("mIDoneBtn").addEventListener("click", async () => {
+  bind("mIDoneBtn", "click", async () => {
     const willDone = !it.done;
     if (timer && timer.subtaskId === (s ? s.id : null)) stopTimer(true);
     await toggleItemDone(it);
@@ -842,7 +844,7 @@ function renameItem(it) {
     renderAll();
     toast("子子任务已更新");
   };
-  $id("mRenItemSave").addEventListener("click", save);
+  bind("mRenItemSave", "click", save);
   input.addEventListener("keydown", e => { if (e.key === "Enter") save(); });
 }
 
@@ -891,22 +893,22 @@ async function onSubtaskGridClick(e) {
   } catch (err) { /* db() 已提示 */ }
 }
 
-$id("layerGrid").addEventListener("click", onSubtaskGridClick);
-$id("layersGrid").addEventListener("click", onSubtaskGridClick);
+bind("layerGrid", "click", onSubtaskGridClick);
+bind("layersGrid", "click", onSubtaskGridClick);
 
-$id("layerGrid").addEventListener("keydown", (e) => {
+bind("layerGrid", "keydown", (e) => {
   if (e.key === "Enter" && e.target.dataset && e.target.dataset.additem) {
     addItem(+e.target.dataset.additem, e.target);
   }
 });
-$id("layersGrid").addEventListener("keydown", (e) => {
+bind("layersGrid", "keydown", (e) => {
   if (e.key === "Enter" && e.target.dataset && e.target.dataset.additem) {
     addItem(+e.target.dataset.additem, e.target);
   }
 });
-$id("layersSearch").addEventListener("input", renderLayers);
+bind("layersSearch", "input", renderLayers);
 
-$id("addLayerCardBtn").addEventListener("click", () => {
+bind("addLayerCardBtn", "click", () => {
   if (!tasks.length) { toast("请先在「任务列表」创建一个任务", true); return; }
   openModal(
     "<h3>新建卡片</h3>" +
@@ -921,7 +923,7 @@ $id("addLayerCardBtn").addEventListener("click", () => {
     '<button class="btn primary" id="mCardSave">创建</button>' +
     "</div>"
   );
-  $id("mCardSave").addEventListener("click", async () => {
+  bind("mCardSave", "click", async () => {
     const title = $id("mCardTitle").value.trim();
     const taskId = +$id("mCardTask").value;
     if (!title) { toast("请输入卡片名称", true); return; }
@@ -1240,7 +1242,7 @@ function openSubtaskModal(sub, autoStart, skipRitual) {
     }
   }
 
-  $id("mPlanSave").addEventListener("click", async () => {
+  bind("mPlanSave", "click", async () => {
     const plan = $id("mPlan").value;
     const rows = await db(cloud.database.from("subtasks").update({ plan }).eq("id", sub.id).select());
     if (rows && rows.length) Object.assign(sub, rows[0]);
@@ -1248,9 +1250,9 @@ function openSubtaskModal(sub, autoStart, skipRitual) {
     renderCards();
   });
 
-  $id("mRenameSub").addEventListener("click", () => renameSubtask(sub));
+  bind("mRenameSub", "click", () => renameSubtask(sub));
 
-  $id("mDelSubBtn").addEventListener("click", async () => {
+  bind("mDelSubBtn", "click", async () => {
     const ok = await confirmDialog({
       title: "删除子任务",
       desc: "「" + esc(sub.title) + "」及其子子任务、番茄钟记录会一并删除，无法恢复。",
@@ -1261,7 +1263,7 @@ function openSubtaskModal(sub, autoStart, skipRitual) {
     await deleteSubtask(sub.id);
   });
 
-  $id("pomoDurs").addEventListener("click", (e) => {
+  bind("pomoDurs", "click", (e) => {
     const b = e.target.closest(".pomo-dur-btn");
     if (!b || timer.running) return;
     setTimerDuration(+b.dataset.dur);
@@ -1270,9 +1272,9 @@ function openSubtaskModal(sub, autoStart, skipRitual) {
     renderTimerFace();
   });
 
-  $id("pomoStartBtn").addEventListener("click", () => { startTimer(); });
+  bind("pomoStartBtn", "click", () => { startTimer(); });
 
-  $id("pomoStopBtn").addEventListener("click", () => {
+  bind("pomoStopBtn", "click", () => {
     syncTimer();
     if (timerElapsedSec() < 1) { toast("还没有开始计时", true); return; }
     const elapsed = Math.min(timer.total, Math.round(timerElapsedSec()));
@@ -1282,7 +1284,7 @@ function openSubtaskModal(sub, autoStart, skipRitual) {
     if (elapsed >= 300) setTimeout(() => openRest(sub), 400); // 干了一段了，先安排休息再谈回来
   });
 
-  $id("mDoneBtn").addEventListener("click", async () => {
+  bind("mDoneBtn", "click", async () => {
     const nd = !sub.done;
     const wasDone = sub.done;
     const wasAllDone = (() => { const ss = taskSubs(sub.task_id); return ss.length > 0 && ss.every(x => x.done); })();
@@ -1357,8 +1359,8 @@ function showRitual(sub) {
     }, 1000);
   }
 
-  $id("ritualGo").addEventListener("click", () => { ritualSkips = 0; saveRitualSkips(); startNow(); });
-  $id("ritualSkip").addEventListener("click", () => {
+  bind("ritualGo", "click", () => { ritualSkips = 0; saveRitualSkips(); startNow(); });
+  bind("ritualSkip", "click", () => {
     ritualSkips++;
     saveRitualSkips();
     if (ritualSkips >= 2) showRitual(sub); // 重绘为温和引导
@@ -1479,8 +1481,8 @@ function openSpark(sub) {
       layer.querySelectorAll("[data-smin]").forEach(x => x.classList.toggle("active", x === b));
     });
   });
-  $id("sparkGo").addEventListener("click", () => beginSpark(s, min));
-  $id("sparkCancel").addEventListener("click", flowClose);
+  bind("sparkGo", "click", () => beginSpark(s, min));
+  bind("sparkCancel", "click", flowClose);
 }
 
 function beginSpark(sub, minutes) {
@@ -1495,8 +1497,8 @@ function beginSpark(sub, minutes) {
     '<button class="btn primary block" id="sparkEarly">我已经动起来了</button>' +
     '<button class="btn ghost block" id="sparkStop" style="margin-top:8px">停，不记了</button>'
   );
-  $id("sparkEarly").addEventListener("click", () => finishSpark("early"));
-  $id("sparkStop").addEventListener("click", () => {
+  bind("sparkEarly", "click", () => finishSpark("early"));
+  bind("sparkStop", "click", () => {
     if (!spark) return;
     clearInterval(spark.intervalId);
     const el = Math.round((spark.total * 1000 - (spark.endAt - Date.now())) / 1000);
@@ -1540,16 +1542,16 @@ function finishSpark(reason) {
     '<button class="btn ghost" id="sparkRest">☕ 歇一会</button>' +
     "</div>"
   );
-  $id("sparkGo25").addEventListener("click", () => {
+  bind("sparkGo25", "click", () => {
     flowClose();
     openSubtaskModal(s, true, true); // 跳过就位仪式，直接接上——刚动过，不需要再热身
   });
-  $id("sparkDone").addEventListener("click", () => {
+  bind("sparkDone", "click", () => {
     flowClose();
     clearAnchor();
     toast("已记 " + fmtDur(seconds) + "，动了就算数 ✓");
   });
-  $id("sparkRest").addEventListener("click", () => { flowClose(); openRest(s); });
+  bind("sparkRest", "click", () => { flowClose(); openRest(s); });
 }
 
 /* ---- 分级休息：浅休息不切场景 / 深休息先留线 ---- */
@@ -1580,7 +1582,7 @@ function openRest(sub) {
       else askAnchor(s);
     });
   });
-  $id("restNone").addEventListener("click", () => {
+  bind("restNone", "click", () => {
     flowClose();
     if (s) openSubtaskModal(s, true, true);
   });
@@ -1599,12 +1601,12 @@ function askAnchor(s) {
     '<button class="btn ghost block" id="anchorSkip" style="margin-top:8px">随便吧，直接休息</button>'
   );
   const input = $id("anchorInput");
-  $id("anchorGo").addEventListener("click", () => {
+  bind("anchorGo", "click", () => {
     const txt = input.value.trim();
     if (s) setAnchor(s, txt);
     startRest("deep", 20, s, txt);
   });
-  $id("anchorSkip").addEventListener("click", () => {
+  bind("anchorSkip", "click", () => {
     if (s) setAnchor(s, s.title);
     startRest("deep", 20, s, "");
   });
@@ -1679,12 +1681,12 @@ function askPrecommit(s) {
   $id("flowLayer").querySelectorAll("[data-ct]").forEach(b => {
     b.addEventListener("click", () => { input.value = b.dataset.ct; input.focus(); });
   });
-  $id("pcGo").addEventListener("click", () => {
+  bind("pcGo", "click", () => {
     const txt = input.value.trim();
     if (txt) { setAnchor(s, txt); awardPoints(1, "提前留了回来第一步", "anchor", null); }
     flowClose();
   });
-  $id("pcSkip").addEventListener("click", flowClose);
+  bind("pcSkip", "click", flowClose);
   input.focus();
 }
 
@@ -1704,7 +1706,7 @@ function renderRestBar() {
     '<span class="rb-emoji">' + meta[0] + "</span>" +
     '<span class="rb-txt">' + meta[1] + " · " + mmss(left) + "</span>" +
     '<button class="btn primary small" id="restBack">我回来了</button>';
-  $id("restBack").addEventListener("click", endRest);
+  bind("restBack", "click", endRest);
 }
 
 function endRest() {
@@ -1739,9 +1741,9 @@ function showReturn(sub) {
     "</div>"
   );
   const arrived = () => awardPoints(2, "休息后回来了", "rest", null);
-  $id("returnGo").addEventListener("click", () => { arrived(); flowClose(); beginSpark(s, 2); });
-  $id("returnOpen").addEventListener("click", () => { arrived(); flowClose(); openSubtaskModal(s, false); });
-  $id("returnLater").addEventListener("click", () => {
+  bind("returnGo", "click", () => { arrived(); flowClose(); beginSpark(s, 2); });
+  bind("returnOpen", "click", () => { arrived(); flowClose(); openSubtaskModal(s, false); });
+  bind("returnLater", "click", () => {
     flowClose();
     setAnchor(s, anchorText);
     toast("给你留着：回来点上面那条「上次停在这里」就行");
@@ -1766,8 +1768,8 @@ function restoreRest() {
   if (rest.endAt <= Date.now()) endRest();
 }
 
-$id("sparkBtn").addEventListener("click", () => openSpark(null));
-$id("returnBar").addEventListener("click", (e) => {
+bind("sparkBtn", "click", () => openSpark(null));
+bind("returnBar", "click", (e) => {
   if (e.target.closest("[data-rbspark]")) {
     const sub = anchor ? subtasks.find(s => s.id === anchor.subtaskId) : null;
     if (sub) openSpark(sub);
@@ -1939,7 +1941,7 @@ function renderPoints() {
   }
 }
 
-$id("addRewardBtn").addEventListener("click", () => {
+bind("addRewardBtn", "click", () => {
   openModal(
     "<h3>添加心愿奖励</h3>" +
     '<label class="modal-label">奖励名称（平时舍不得买的那件东西）</label>' +
@@ -1966,11 +1968,11 @@ $id("addRewardBtn").addEventListener("click", () => {
     renderPoints();
     toast("已添加心愿：🎁 " + title);
   };
-  $id("mRewardSave").addEventListener("click", save);
+  bind("mRewardSave", "click", save);
   input.addEventListener("keydown", e => { if (e.key === "Enter") save(); });
 });
 
-$id("rewardsList").addEventListener("click", async (e) => {
+bind("rewardsList", "click", async (e) => {
   const del = e.target.closest("[data-delreward]");
   const red = e.target.closest("[data-redeem]");
   try {
@@ -2248,10 +2250,10 @@ function renderMoney() {
   }
 }
 
-$id("prevPeriodBtn").addEventListener("click", () => shiftMoney(-1));
-$id("nextPeriodBtn").addEventListener("click", () => shiftMoney(1));
-$id("thisPeriodBtn").addEventListener("click", () => { moneyAnchor = null; renderMoney(); });
-$id("tab-money").addEventListener("click", (e) => {
+bind("prevPeriodBtn", "click", () => shiftMoney(-1));
+bind("nextPeriodBtn", "click", () => shiftMoney(1));
+bind("thisPeriodBtn", "click", () => { moneyAnchor = null; renderMoney(); });
+bind("tab-money", "click", (e) => {
   const b = e.target.closest(".money-periods .mode-btn");
   if (!b || b.dataset.period === moneyPeriod) return;
   moneyPeriod = b.dataset.period;
@@ -2260,7 +2262,7 @@ $id("tab-money").addEventListener("click", (e) => {
   renderMoney();
 });
 
-$id("addMoneyBtn").addEventListener("click", () => {
+bind("addMoneyBtn", "click", () => {
   const R = moneyRange();
   const defDate = moneyAnchor ? localDateStr(R.end > new Date() ? new Date() : R.end) : localDateStr(new Date());
   const kindBtns = [
@@ -2319,11 +2321,11 @@ $id("addMoneyBtn").addEventListener("click", () => {
     renderMoney();
     toast(MONEY_KINDS[kind].name + "已记录：" + fmtYuan(amt));
   };
-  $id("mMoneySave").addEventListener("click", save);
-  $id("mMoneyAmt").addEventListener("keydown", e => { if (e.key === "Enter") save(); });
+  bind("mMoneySave", "click", save);
+  bind("mMoneyAmt", "keydown", e => { if (e.key === "Enter") save(); });
 });
 
-$id("moneyList").addEventListener("click", async (e) => {
+bind("moneyList", "click", async (e) => {
   const del = e.target.closest("[data-delmoney]");
   if (!del) return;
   const id = +del.dataset.delmoney;
@@ -2473,11 +2475,11 @@ function renderGoals() {
   }).join("");
 }
 
-$id("prevMonthBtn").addEventListener("click", () => shiftMonth(-1));
-$id("nextMonthBtn").addEventListener("click", () => shiftMonth(1));
-$id("thisMonthBtn").addEventListener("click", () => { monthView = null; renderMonth(); });
+bind("prevMonthBtn", "click", () => shiftMonth(-1));
+bind("nextMonthBtn", "click", () => shiftMonth(1));
+bind("thisMonthBtn", "click", () => { monthView = null; renderMonth(); });
 
-$id("addGoalBtn").addEventListener("click", () => {
+bind("addGoalBtn", "click", () => {
   const taskOpts = tasks.map(t => '<option value="' + t.id + '">' + catOf(t).icon + " " + esc(t.title) + "</option>").join("");
   openModal(
     "<h3>新建月目标</h3>" +
@@ -2492,7 +2494,7 @@ $id("addGoalBtn").addEventListener("click", () => {
     '<div class="modal-actions"><button class="btn ghost" data-close="1">取消</button>' +
     '<button class="btn primary" id="gSave">创建</button></div>'
   );
-  $id("gSave").addEventListener("click", async () => {
+  bind("gSave", "click", async () => {
     const title = $id("gTitle").value.trim();
     const target = Math.max(1, parseInt($id("gTarget").value, 10) || 0);
     if (!title) { toast("请填写目标名称", true); return; }
@@ -2506,7 +2508,7 @@ $id("addGoalBtn").addEventListener("click", () => {
   $id("gTitle").focus();
 });
 
-$id("goalsList").addEventListener("click", async (e) => {
+bind("goalsList", "click", async (e) => {
   const inc = e.target.closest("[data-goalinc]");
   const dec = e.target.closest("[data-goaldec]");
   const del = e.target.closest("[data-goaldel]");
@@ -2531,10 +2533,10 @@ $id("goalsList").addEventListener("click", async (e) => {
 });
 
 /* ============ 每日日程 ============ */
-$id("prevDayBtn").addEventListener("click", () => shiftDate(-1));
-$id("nextDayBtn").addEventListener("click", () => shiftDate(1));
-$id("todayBtn").addEventListener("click", () => { selectedDate = localDateStr(new Date()); renderSchedule(); });
-$id("datePicker").addEventListener("change", () => {
+bind("prevDayBtn", "click", () => shiftDate(-1));
+bind("nextDayBtn", "click", () => shiftDate(1));
+bind("todayBtn", "click", () => { selectedDate = localDateStr(new Date()); renderSchedule(); });
+bind("datePicker", "change", () => {
   if ($id("datePicker").value) { selectedDate = $id("datePicker").value; renderSchedule(); }
 });
 function shiftDate(n) {
@@ -2611,7 +2613,7 @@ function toMin(t) {
 }
 function timeRange(s, e) { return s + (e ? " - " + e : ""); }
 
-$id("timeline").addEventListener("click", async (e) => {
+bind("timeline", "click", async (e) => {
   const b = e.target.closest(".tl-block");
   if (!b) return;
   const [type, idStr] = b.dataset.block.split(":");
@@ -2639,7 +2641,7 @@ $id("timeline").addEventListener("click", async (e) => {
   }
 });
 
-$id("addEventBtn").addEventListener("click", () => {
+bind("addEventBtn", "click", () => {
   const now = new Date();
   const defStart = String(now.getHours()).padStart(2, "0") + ":00";
   const endH = (now.getHours() + 1) % 24;
@@ -2659,7 +2661,7 @@ $id("addEventBtn").addEventListener("click", () => {
     '<button class="btn primary" id="mEvSave">保存</button>' +
     "</div>"
   );
-  $id("mEvSave").addEventListener("click", async () => {
+  bind("mEvSave", "click", async () => {
     const title = $id("mEvTitle").value.trim();
     const start = $id("mEvStart").value;
     const end = $id("mEvEnd").value || null;
@@ -2812,21 +2814,21 @@ async function sendChat() {
   }
 }
 
-$id("chatSendBtn").addEventListener("click", () => {
+bind("chatSendBtn", "click", () => {
   if (chatBusy && chatAbort) { chatAbort.abort(); return; }
   sendChat();
 });
-$id("chatInput").addEventListener("keydown", (e) => {
+bind("chatInput", "keydown", (e) => {
   if (e.key === "Enter") { e.preventDefault(); if (!chatBusy) sendChat(); }
 });
-$id("chatClearBtn").addEventListener("click", () => {
+bind("chatClearBtn", "click", () => {
   chatMsgs = [];
   chatConvId = "wb-chat-" + Date.now() + "-" + Math.random().toString(36).slice(2, 8);
   saveChatStorage();
   renderChatMsgs();
   toast("已开启新对话 🌱");
 });
-$id("chatModelSel").addEventListener("change", (e) => {
+bind("chatModelSel", "change", (e) => {
   chatModel = e.target.value;
   saveChatStorage();
 });
@@ -2861,9 +2863,9 @@ function renderAbc() {
   }).join("");
 }
 
-$id("abcIntensity").addEventListener("input", () => { $id("abcIntVal").textContent = $id("abcIntensity").value; });
+bind("abcIntensity", "input", () => { $id("abcIntVal").textContent = $id("abcIntensity").value; });
 
-$id("abcSaveBtn").addEventListener("click", async () => {
+bind("abcSaveBtn", "click", async () => {
   const a = $id("abcA").value.trim();
   const b = $id("abcB").value.trim();
   const c = $id("abcC").value.trim();
@@ -2884,7 +2886,7 @@ $id("abcSaveBtn").addEventListener("click", async () => {
   } catch (e) { /* db() 已提示 */ }
 });
 
-$id("abcList").addEventListener("click", async (e) => {
+bind("abcList", "click", async (e) => {
   const btn = e.target.closest("[data-delabc]");
   if (!btn) return;
   const id = +btn.dataset.delabc;
@@ -3077,17 +3079,17 @@ function openFirstAid(item, onClose) {
     };
     urge.intervalId = setInterval(tick, 500);
     tick();
-    $id("urgeScreen").addEventListener("click", () => {
+    bind("urgeScreen", "click", () => {
       if (rest) { toast("已经在休息倒计时里了，这轮结束再说", true); return; }
       const s = (anchor && subtasks.find(x => x.id === anchor.subtaskId)) || pickBestSub();
       closeModal();
       startRest("screen", 10, s, anchor && anchor.text ? anchor.text : "");
     });
-    $id("urgeSwap").addEventListener("click", () => {
+    bind("urgeSwap", "click", () => {
       closeModal();
       toast("冲动是无聊或焦虑在要东西——去拿真正的补给：走两步、喝水、玩会儿扭扭棒");
     });
-    $id("urgeStay").addEventListener("click", () => {
+    bind("urgeStay", "click", () => {
       closeModal();
       awardPoints(2, "冲动冲浪 60 秒", "urge", null);
       toast("赢了这一浪。回到刚才的事上");
@@ -3095,7 +3097,7 @@ function openFirstAid(item, onClose) {
   }
 }
 
-$id("aidGrid").addEventListener("click", (e) => {
+bind("aidGrid", "click", (e) => {
   const btn = e.target.closest("[data-aid]");
   if (btn) openFirstAid(FIRST_AID[+btn.dataset.aid]);
 });
@@ -3152,8 +3154,8 @@ function confirmDialog(opts) {
       "</div>",
       () => { if (!settled) { settled = true; resolve(false); } }
     );
-    $id("mConfirmOk").addEventListener("click", () => finish(true));
-    $id("mConfirmCancel").addEventListener("click", () => finish(false));
+    bind("mConfirmOk", "click", () => finish(true));
+    bind("mConfirmCancel", "click", () => finish(false));
   });
 }
 
@@ -3307,7 +3309,7 @@ function renameTask(task) {
     renderAll();
     toast("任务已更新");
   };
-  $id("mRenSave").addEventListener("click", save);
+  bind("mRenSave", "click", save);
   input.addEventListener("keydown", e => { if (e.key === "Enter") save(); });
 }
 
@@ -3335,18 +3337,18 @@ function renameSubtask(sub) {
     renderAll();
     toast("子任务已更新");
   };
-  $id("mRenSubSave").addEventListener("click", save);
+  bind("mRenSubSave", "click", save);
   input.addEventListener("keydown", e => { if (e.key === "Enter") save(); });
 }
-$id("modalOverlay").addEventListener("click", (e) => {
+bind("modalOverlay", "click", (e) => {
   if (e.target === $id("modalOverlay")) closeModal();
 });
-$id("modalBox").addEventListener("click", (e) => {
+bind("modalBox", "click", (e) => {
   if (e.target.closest("[data-close]")) closeModal();
 });
 
 /* ============ 悬浮球 ============ */
-$id("pomoFloat").addEventListener("click", () => {
+bind("pomoFloat", "click", () => {
   if (!timer) return;
   const sub = subtasks.find(s => s.id === timer.subtaskId);
   if (sub) openSubtaskModal(sub);
