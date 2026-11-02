@@ -669,7 +669,9 @@ function subtaskCardHtml(s, showTask) {
   const cat = catOf(task);
   const its = items.filter(i => i.subtask_id === s.id);
   const doneCnt = its.filter(i => i.done).length;
-  const allDone = its.length > 0 && its.every(i => i.done);
+  /* 变绿规则：子任务本身勾选了完成，或（有子子任务且全部完成）。
+     之前只看子子任务，导致「已完成但没有子子任务」的卡片永远不变绿 */
+  const allDone = s.done || (its.length > 0 && its.every(i => i.done));
   const chipHtml = its.length ? its.map(i =>
     '<div class="sub-chip' + (i.done ? " is-done" : "") + '" data-item="' + i.id + '">' +
     '<span class="sub-check" data-checkitem="' + i.id + '">✓</span>' +
