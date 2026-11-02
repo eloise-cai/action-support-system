@@ -808,6 +808,9 @@ main { max-width: 1100px; margin: 0 auto; padding: 22px 18px 80px; }
 .chat-tip b { color: var(--orange); }
 
 /* ABC 记录 */
+/* 心理页 ABC：收窄居中，不再大块平铺 */
+#mind-abc { max-width: 700px; margin: 0 auto; }
+
 .abc-card {
   background: var(--card);
   border: 1px solid var(--border);
