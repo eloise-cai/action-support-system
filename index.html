@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>行动支持系统</title>
-<link rel="stylesheet" href="styles.css?v=20261102g">
+<link rel="stylesheet" href="styles.css?v=20261102h">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🍅</text></svg>">
 </head>
 <body>
@@ -35,6 +35,7 @@
     <div class="brand">⚡ 行动支持系统</div>
     <div class="top-actions">
       <span id="ptsChip" class="pts-chip">⭐ 0</span>
+      <button id="skinBtn" class="skin-btn" title="主题皮肤">🎨</button>
       <span id="userLabel" class="user-label"></span>
       <button id="logoutBtn" class="btn ghost small">退出</button>
     </div>
@@ -144,6 +145,8 @@
         </div>
       </div>
       <div class="pts-rules">赚分规则：完成子任务 <b>+10</b> · 子任务全清空 <b>+5</b> · 完成子子任务 <b>+3</b> · 专注每 5 分钟 <b>+1</b>（取消完成会扣回，不自欺）</div>
+      <h3 class="pts-sub-title">🎨 皮肤挑战活动 <small style="font-weight:400;color:var(--text-sub);font-size:12px">达成挑战解锁主题，已解锁永久保留</small></h3>
+      <div id="skinChallenges" class="skin-challenges"></div>
       <h3 class="pts-sub-title">🏅 徽章墙 <small style="font-weight:400;color:var(--text-sub);font-size:12px">按周期点亮，下个周期没做到就会熄灭</small></h3>
       <div id="badgeWall" class="badge-wall"></div>
       <h3 class="pts-sub-title">🎁 我的心愿奖励</h3>
@@ -352,6 +355,6 @@
 <div id="toast" class="toast hidden"></div>
 
 <script src="https://cdn.jsdelivr.net/npm/@tencent-ai/workbuddy-cloud-sdk@dev/lib/index.global.js"></script>
-<script src="app.js?v=20261102g"></script>
+<script src="app.js?v=20261102h"></script>
 </body>
 </html>

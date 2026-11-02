@@ -204,6 +204,7 @@ async function boot() {
   restoreRest(); // 休息中途刷新/锁屏回来，接着计时
   renderAll();
   renderFloat();
+  setTimeout(guideOnEnter, 2500); // 默认落在任务列表，伙伴打个招呼
   initChat(); // 心理页：加载模型列表与历史对话（异步，不阻塞）
 }
 
@@ -215,6 +216,7 @@ async function ensureUserProfile() {
     if (got && got.data && got.data[0]) {
       profileId = got.data[0].id;
       userCode = got.data[0].user_code;
+      if (got.data[0].theme) applyTheme(got.data[0].theme); // 恢复上次用的皮肤
     } else if (got && !got.error) {
       for (let i = 0; i < 5 && !userCode; i++) {
         const code = "U" + String(Math.floor(100000 + Math.random() * 900000));
@@ -284,6 +286,8 @@ cloud.auth.onAuthStateChange((event) => {
   if (event === "SIGNED_OUT") {
     tasks = []; subtasks = []; sessions = []; items = []; events = [];
     points = []; rewards = []; goals = []; moneyRecords = []; userCode = null; profileId = null; moneyPeriod = "week"; moneyAnchor = null;
+    longtermTasks = [];
+    applyTheme("default"); // 退出登录恢复默认主题
     chatMsgs = []; abcRecords = []; abcLoaded = false;
     saveChatStorage();
     exitLayer();
@@ -304,6 +308,7 @@ document.querySelectorAll(".tab").forEach(btn => {
     if (btn.dataset.tab === "points") renderPoints();
     if (btn.dataset.tab === "month") renderMonth();
     if (btn.dataset.tab === "money") renderMoney();
+    if (btn.dataset.tab === "cards") guideOnEnter(); // 进入任务列表时的伙伴引导
   });
 });
 
@@ -472,6 +477,7 @@ bind("cardsGrid", "click", async (e) => {
       await awardOnSubtaskToggle(s, wasDone, wasAllDone);
       if (nd) {
         celebrate();
+        sayCompanion("恭喜你！变得更棒啦！");
         const subs = taskSubs(s.task_id);
         if (subs.length && subs.every(x => x.done)) {
           const t = tasks.find(x => x.id === s.task_id);
@@ -646,6 +652,7 @@ function enterLayer(taskId) {
   $id("layerView").classList.remove("hidden");
   renderLayer();
   window.scrollTo(0, 0);
+  guideOnEnter(); // 进入卡片界面时的伙伴引导
 }
 
 function exitLayer() {
@@ -1123,6 +1130,7 @@ function finishTimerRound() {
   /* 一轮结束 → 直接进入「分级休息」，不让用户自己在「再撑一会 / 休息」之间反复内耗。
      但如果这一轮是你离开很久之后才走完的，回来第一件事不该是「被安排休息」。 */
   if (finSub && overrun <= 120) setTimeout(() => { if (!rest && !spark) openRest(finSub); }, 1100);
+  setTimeout(maybeDrop, 1600); // 惊喜掉落：专注自然走完后小概率彩蛋
 }
 
 function stopTimer(record) {
@@ -1304,7 +1312,7 @@ function openSubtaskModal(sub, autoStart, skipRitual) {
     closeModal();
     renderAll();
     await awardOnSubtaskToggle(sub, wasDone, wasAllDone);
-    if (nd) { celebrate(); toast("子任务已完成 ✓"); }
+    if (nd) { celebrate(); sayCompanion("恭喜你！变得更棒啦！"); toast("子任务已完成 ✓"); }
   });
 }
 
@@ -1953,6 +1961,7 @@ function renderPoints() {
   if ($id("ptsToday")) $id("ptsToday").textContent = pointsToday();
   renderPointsChip();
   renderBadgeWall();
+  renderSkinChallenges();
 
   const list = $id("rewardsList");
   if (list) {
@@ -3594,12 +3603,18 @@ if (ltListEl) {
     if (!t) return;
     const act = btn.dataset.act;
     if (act === "done") {
+      const wasDone = t.done;
       const rows = await db(cloud.database.from("longterm_tasks").update({ done: !t.done }).eq("id", t.id).select());
       if (rows && rows[0]) {
         const i = longtermTasks.findIndex(x => x.id === rows[0].id);
         if (i >= 0) longtermTasks[i] = rows[0];
       }
       renderLongterm();
+      if (!wasDone && rows && rows[0] && rows[0].done) {
+        // 里程碑宝箱：子任务（章节）+20，母任务通关 +50
+        if (t.parent_id) openChest("章节达成！", "「" + t.title + "」完成，宝箱已就位 📦 +20 积分", 20, "里程碑宝箱：" + t.title);
+        else openChest("长线通关！", "「" + t.title + "」完整走完 🎉 +50 积分", 50, "长线通关宝箱：" + t.title);
+      }
     } else if (act === "add") {
       openLtModal(t.id, null);
     } else if (act === "edit") {
@@ -3623,6 +3638,161 @@ bind("addLtBtn", "click", () => openLtModal(null, null));
 bind("ltPrevBtn", "click", () => { ltView = ltShiftMonth(-1); renderLongterm(); });
 bind("ltNextBtn", "click", () => { ltView = ltShiftMonth(1); renderLongterm(); });
 bind("ltTodayBtn", "click", () => { ltView = null; renderLongterm(); });
+
+/* ============ 主题皮肤（C2）：挑战解锁 + ID 旁选择，已解锁永久保留 ============ */
+let currentTheme = "default";
+const THEMES = [
+  { id: "default", name: "深空蓝", icon: "🌌", desc: "默认主题，永远随身", challenge: null },
+  { id: "forest", name: "森林", icon: "🌲", desc: "累计专注满 5 小时解锁",
+    challenge: { label: "累计专注时长", target: 300, unit: " 分钟", progress: () => Math.round(sessions.reduce((a, b) => a + (b.duration_seconds || 0), 0) / 60) } },
+  { id: "starry", name: "星空", icon: "⭐", desc: "累计获得 500 积分解锁",
+    challenge: { label: "累计获得积分", target: 500, unit: " 分", progress: () => pointsEarnedTotal() } },
+  { id: "retro", name: "复古手账", icon: "📔", desc: "完成 1 个长线任务解锁",
+    challenge: { label: "已完成长线任务", target: 1, unit: " 个", progress: () => longtermTasks.filter(x => !x.parent_id && x.done).length } },
+];
+function themeUnlocked(id) {
+  const t = THEMES.find(x => x.id === id);
+  if (!t) return false;
+  if (!t.challenge) return true;
+  return t.challenge.progress() >= t.challenge.target;
+}
+function applyTheme(id) {
+  if (!document.body) return;
+  document.body.classList.remove("theme-forest", "theme-starry", "theme-retro");
+  if (id && id !== "default") document.body.classList.add("theme-" + id);
+  currentTheme = id || "default";
+}
+async function saveTheme(id) {
+  applyTheme(id);
+  try {
+    if (profileId) await db(cloud.database.from("user_profiles").update({ theme: id }).eq("id", profileId).select());
+  } catch (e) { /* 本地已生效，写库失败不阻塞 */ }
+  renderPointsChip();
+  if (!$id("tab-points").classList.contains("hidden")) renderPoints();
+}
+
+function openSkinModal() {
+  const rows = THEMES.map(t => {
+    const unlocked = themeUnlocked(t.id);
+    let foot;
+    if (unlocked) {
+      foot = currentTheme === t.id
+        ? '<span class="skin-cur">✓ 使用中</span>'
+        : '<button class="btn primary small" data-usetheme="' + t.id + '">使用</button>';
+    } else {
+      const p = Math.min(t.challenge.target, t.challenge.progress());
+      const pct = Math.round(p / t.challenge.target * 100);
+      foot = '<div class="skin-prog"><span>' + t.challenge.label + " " + p + " / " + t.challenge.target + t.challenge.unit + '</span><div class="progress-bar"><div class="progress-fill" style="width:' + pct + '%"></div></div></div>';
+    }
+    return '<div class="skin-card' + (unlocked ? "" : " skin-locked") + (currentTheme === t.id ? " skin-active" : "") + '">' +
+      '<div class="skin-preview skin-prev-' + t.id + '"><span>' + t.icon + "</span></div>" +
+      '<div class="skin-info"><b>' + t.name + "</b><small>" + t.desc + "</small>" + foot + "</div></div>";
+  }).join("");
+  openModal(
+    "<h3>🎨 主题皮肤</h3>" +
+    '<p style="color:var(--text-sub);font-size:13px;margin-top:-8px;margin-bottom:10px">解锁的主题永久保留；挑战进度也会同步显示在「积分奖励」页</p>' +
+    '<div class="skin-grid">' + rows + "</div>"
+  );
+  document.querySelectorAll("[data-usetheme]").forEach(b => {
+    b.addEventListener("click", async () => {
+      await saveTheme(b.dataset.usetheme);
+      closeModal();
+      toast("已换上「" + (THEMES.find(x => x.id === b.dataset.usetheme) || {}).name + "」主题 ✨");
+      sayCompanion("新皮肤很适合探险！");
+    });
+  });
+}
+bind("skinBtn", "click", openSkinModal);
+
+function renderSkinChallenges() {
+  const el = $id("skinChallenges");
+  if (!el) return;
+  el.innerHTML = THEMES.filter(t => t.challenge).map(t => {
+    const p = Math.min(t.challenge.target, t.challenge.progress());
+    const unlocked = p >= t.challenge.target;
+    const pct = unlocked ? 100 : Math.round(p / t.challenge.target * 100);
+    return '<div class="skin-challenge' + (unlocked ? " done" : "") + '">' +
+      '<div class="skin-ch-top"><span class="skin-ch-name">' + t.icon + " " + t.name + "主题</span>" +
+      (unlocked
+        ? '<span class="skin-ch-done">✓ 已解锁</span>'
+        : '<span class="skin-ch-num">' + p + " / " + t.challenge.target + t.challenge.unit + "</span>") + "</div>" +
+      '<div class="progress-bar"><div class="progress-fill" style="width:' + pct + '%"></div></div>' +
+      '<div class="skin-ch-desc">' + (unlocked ? "已永久解锁，点顶栏 🎨 换上吧" : t.desc) + "</div></div>";
+  }).join("");
+}
+
+/* ============ 里程碑宝箱（C3）：长线任务每达成一段就开一次箱 ============ */
+function openChest(head, desc, pts, reason) {
+  openModal(
+    "<h3>" + head + "</h3>" +
+    '<div class="chest-wrap"><div class="chest-emoji" id="chestEmoji">📦</div>' +
+    '<p class="chest-desc">' + esc(desc) + "</p>" +
+    '<p class="chest-hint">里面有一份坚持的证明</p></div>' +
+    '<div class="modal-actions"><button class="btn primary" id="chestOpen">开箱！</button></div>'
+  );
+  bind("chestOpen", "click", () => {
+    const em = $id("chestEmoji");
+    if (em) em.textContent = "🎉";
+    const btn = $id("chestOpen");
+    if (btn) btn.disabled = true;
+    celebrate();
+    awardPoints(pts, reason);
+    sayCompanion("恭喜你！变得更棒啦！");
+    setTimeout(closeModal, 1500);
+  });
+}
+
+/* ============ 惊喜掉落（C4）：专注自然走完后小概率掉彩蛋，只掉不扣（变率强化） ============ */
+function maybeDrop() {
+  if (Math.random() >= 0.3) return;
+  const pts = [5, 8, 10, 15][Math.floor(Math.random() * 4)];
+  const icons = ["🎁", "🍀", "🎈", "🍬", "✨"];
+  const icon = icons[Math.floor(Math.random() * icons.length)];
+  try {
+    const old = $id("dropWidget");
+    if (old) old.remove();
+    const el = document.createElement("div");
+    el.id = "dropWidget";
+    el.className = "drop-widget";
+    el.innerHTML =
+      '<div class="drop-icon">' + icon + '</div>' +
+      '<div class="drop-body"><b>惊喜掉落！</b><small>运气不错，捡到了 ' + pts + " 积分</small></div>" +
+      '<button class="btn primary small" id="dropTake">收下</button>';
+    document.body.appendChild(el);
+    bind("dropTake", "click", () => {
+      el.remove();
+      celebrate();
+      awardPoints(pts, "惊喜掉落 " + icon);
+    });
+    setTimeout(() => { if ($id("dropWidget") === el) el.remove(); }, 15000);
+  } catch (e) {}
+}
+
+/* ============ 伙伴引导：进入任务界面打招呼 / 完成后庆祝 ============ */
+let companionEl = null, companionHideTimer = null, lastGuideAt = 0;
+const GUIDE_LINES = ["开始探险吗？", "要不试试这个？"];
+function sayCompanion(text, ms) {
+  try {
+    if (!companionEl || !document.body.contains(companionEl)) {
+      const old = document.querySelector(".companion");
+      if (old) old.remove();
+      companionEl = document.createElement("div");
+      companionEl.className = "companion";
+      companionEl.innerHTML = '<div class="companion-face">🐣</div><div class="companion-bubble"></div>';
+      document.body.appendChild(companionEl);
+    }
+    companionEl.querySelector(".companion-bubble").textContent = text;
+    companionEl.classList.add("show");
+    clearTimeout(companionHideTimer);
+    companionHideTimer = setTimeout(() => { if (companionEl) companionEl.classList.remove("show"); }, ms || 4500);
+  } catch (e) {}
+}
+function guideOnEnter() {
+  const now = Date.now();
+  if (now - lastGuideAt < 4 * 60 * 1000) return; // 4 分钟内不重复打扰
+  lastGuideAt = now;
+  sayCompanion(GUIDE_LINES[Math.floor(Math.random() * GUIDE_LINES.length)]);
+}
 
 /* ============ 启动 ============ */
 function renderAll() {

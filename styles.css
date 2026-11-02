@@ -1389,3 +1389,111 @@ main { max-width: 1100px; margin: 0 auto; padding: 22px 18px 80px; }
 .lt-sub-dates { color: var(--text-sub); font-size: 11px; flex: none; }
 .lt-icon-btn { border: none; background: none; cursor: pointer; color: var(--text-sub); font-size: 13px; padding: 2px 4px; border-radius: 6px; }
 .lt-icon-btn:hover { color: #fff; background: rgba(255, 255, 255, .06); }
+
+/* ---------- 主题皮肤（C2） ---------- */
+.skin-btn {
+  border: 1px solid var(--border); background: var(--bg-soft); color: var(--text);
+  border-radius: 20px; padding: 4px 10px; font-size: 13px; line-height: 1.4;
+}
+.skin-btn:hover { border-color: var(--accent); }
+.skin-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; max-height: 60vh; overflow-y: auto; padding: 2px; }
+.skin-card {
+  display: flex; gap: 10px; padding: 10px; border-radius: 12px;
+  background: var(--bg-soft); border: 1px solid var(--border); align-items: center;
+}
+.skin-card.skin-active { border-color: var(--accent); }
+.skin-card.skin-locked { opacity: .75; }
+.skin-preview {
+  width: 52px; height: 52px; border-radius: 10px; flex: none;
+  display: flex; align-items: center; justify-content: center; font-size: 24px;
+}
+.skin-prev-default { background: linear-gradient(135deg, #0f1726, #1f2c45); }
+.skin-prev-forest { background: linear-gradient(135deg, #14261a, #2e5b3c); }
+.skin-prev-starry { background: linear-gradient(135deg, #0b1030, #3b2e6e); }
+.skin-prev-retro { background: linear-gradient(135deg, #efe3cf, #d9b98c); }
+.skin-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.skin-info b { font-size: 13.5px; }
+.skin-info small { color: var(--text-sub); font-size: 11.5px; }
+.skin-cur { color: var(--green); font-size: 12.5px; font-weight: 600; }
+.skin-prog { display: flex; flex-direction: column; gap: 3px; font-size: 11px; color: var(--text-sub); }
+.skin-challenges { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 10px; }
+.skin-challenge {
+  background: var(--card); border: 1px solid var(--border); border-radius: 12px;
+  padding: 12px 14px; display: flex; flex-direction: column; gap: 7px;
+}
+.skin-challenge.done { border-color: rgba(47, 191, 113, .45); }
+.skin-ch-top { display: flex; align-items: center; gap: 8px; }
+.skin-ch-name { font-weight: 700; font-size: 13.5px; }
+.skin-ch-num { margin-left: auto; font-size: 12px; color: var(--text-sub); }
+.skin-ch-done { margin-left: auto; color: var(--green); font-size: 12.5px; font-weight: 600; }
+.skin-ch-desc { font-size: 12px; color: var(--text-sub); }
+
+/* 主题：森林 —— 深绿基底、暖木点缀 */
+body.theme-forest {
+  --bg: #0e1a13; --bg-soft: #12241a; --card: #17301f; --card-hover: #1d3a27;
+  --border: rgba(190, 255, 210, .09); --text: #e6f2e9; --text-sub: #96b3a0;
+  --accent: #4fc98a; --green: #6fdc9c; --orange: #e8b04b;
+}
+/* 主题：星空 —— 深紫夜空、星光点缀 */
+body.theme-starry {
+  --bg: #0b0f26; --bg-soft: #131636; --card: #1a1e44; --card-hover: #222656;
+  --border: rgba(200, 190, 255, .1); --text: #ece9fb; --text-sub: #9a95c4;
+  --accent: #9d7bff; --green: #6ee7b7; --orange: #f0b05c;
+}
+/* 主题：复古手账 —— 米纸底、墨字、砖红点缀（唯一浅色皮肤） */
+body.theme-retro {
+  --bg: #f3ecdd; --bg-soft: #ece2cd; --card: #faf5ea; --card-hover: #fdfaf1;
+  --border: rgba(90, 66, 40, .18); --text: #3d3226; --text-sub: #8a7a63;
+  --accent: #b5563c; --green: #4a7c59; --red: #c0392b; --orange: #c07b2d;
+}
+
+/* ---------- 里程碑宝箱（C3） ---------- */
+.chest-wrap { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 10px 0 4px; }
+.chest-emoji { font-size: 64px; animation: chestShake 1s ease-in-out infinite; }
+@keyframes chestShake {
+  0%, 100% { transform: rotate(0deg) scale(1); }
+  25% { transform: rotate(-6deg) scale(1.04); }
+  75% { transform: rotate(6deg) scale(1.04); }
+}
+.chest-desc { color: var(--text); font-size: 14px; }
+.chest-hint { color: var(--text-sub); font-size: 12px; }
+
+/* ---------- 惊喜掉落（C4） ---------- */
+.drop-widget {
+  position: fixed; right: 18px; bottom: 18px; z-index: 90;
+  display: flex; align-items: center; gap: 10px;
+  background: var(--card); border: 1px solid var(--accent); border-radius: 14px;
+  padding: 12px 14px; box-shadow: 0 10px 30px rgba(0, 0, 0, .35);
+  animation: dropIn .45s cubic-bezier(.2, 1.4, .4, 1);
+}
+@keyframes dropIn { from { transform: translateY(30px) scale(.7); opacity: 0; } to { transform: none; opacity: 1; } }
+.drop-icon { font-size: 30px; animation: chestShake 1.4s ease-in-out infinite; }
+.drop-body { display: flex; flex-direction: column; gap: 2px; }
+.drop-body b { font-size: 13.5px; }
+.drop-body small { color: var(--text-sub); font-size: 12px; }
+
+/* ---------- 伙伴引导 ---------- */
+.companion {
+  position: fixed; left: 18px; bottom: 18px; z-index: 90;
+  display: flex; align-items: flex-end; gap: 8px;
+  opacity: 0; transform: translateY(14px); pointer-events: none;
+  transition: opacity .3s ease, transform .3s ease;
+}
+.companion.show { opacity: 1; transform: none; }
+.companion-face {
+  width: 46px; height: 46px; border-radius: 50%; flex: none;
+  background: var(--card); border: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: center; font-size: 24px;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, .3);
+}
+.companion-bubble {
+  background: var(--card); border: 1px solid var(--accent); border-radius: 14px 14px 14px 4px;
+  padding: 9px 14px; font-size: 13.5px; max-width: 220px;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, .3);
+}
+
+@media (max-width: 640px) {
+  .skin-grid { grid-template-columns: 1fr; }
+  .drop-widget { left: 12px; right: 12px; }
+  .companion { left: 12px; bottom: 12px; }
+}
