@@ -130,6 +130,7 @@ main { max-width: 1100px; margin: 0 auto; padding: 22px 18px 80px; }
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
+  flex-wrap: wrap;
   gap: 12px;
   margin-bottom: 18px;
 }
@@ -807,27 +808,18 @@ main { max-width: 1100px; margin: 0 auto; padding: 22px 18px 80px; }
 .chat-tip b { color: var(--orange); }
 
 /* ABC 记录 */
-.abc-layout {
-  display: grid;
-  grid-template-columns: minmax(0, 5fr) minmax(0, 4fr);
-  gap: 16px;
-  align-items: start;
-}
 .abc-card {
   background: var(--card);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   padding: 16px 18px;
+  margin-bottom: 20px;
 }
 .abc-card h3 { font-size: 16px; margin-bottom: 4px; }
 .abc-row2 { display: flex; gap: 12px; }
 .abc-row2 > div { flex: 1; }
-.abc-side { display: flex; flex-direction: column; gap: 10px; }
-.abc-list-title { font-size: 16px; font-weight: 700; margin: 2px 0 0; }
+.abc-list-title { font-size: 16px; font-weight: 700; margin-bottom: 10px; }
 .abc-list { display: flex; flex-direction: column; gap: 10px; }
-@media (max-width: 900px) {
-  .abc-layout { grid-template-columns: 1fr; }
-}
 .abc-item {
   background: var(--card);
   border: 1px solid var(--border);
@@ -1256,3 +1248,52 @@ main { max-width: 1100px; margin: 0 auto; padding: 22px 18px 80px; }
   font-size: 13px;
 }
 .chip:hover { border-color: rgba(255, 255, 255, .25); }
+
+/* ---------- 收支：周期切换 / 储蓄投资 / 美化 ---------- */
+.money-periods { margin-left: auto; margin-bottom: 0; }
+.money-save-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px; }
+.money-save-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px 14px;
+  position: relative;
+  overflow: hidden;
+}
+.money-save-card::after {
+  content: "";
+  position: absolute;
+  right: -18px; top: -18px;
+  width: 64px; height: 64px;
+  border-radius: 50%;
+  pointer-events: none;
+}
+.money-save-card.save::after { background: rgba(79, 140, 255, .07); }
+.money-save-card.invest::after { background: rgba(164, 120, 255, .08); }
+.money-save-card .money-sum-v { color: var(--text); }
+.money-save-card.save .money-sum-t { color: var(--accent); }
+.money-save-card.invest .money-sum-t { color: #b28aff; }
+.money-save-sub { font-size: 11.5px; color: var(--text-sub); margin-top: 3px; }
+
+.money-sum-card { transition: border-color .15s; }
+.money-sum-card.in { background: linear-gradient(135deg, rgba(47, 191, 113, .09), rgba(47, 191, 113, 0) 55%), var(--card); border-color: rgba(47, 191, 113, .22); }
+.money-sum-card.out { background: linear-gradient(135deg, rgba(229, 72, 77, .08), rgba(229, 72, 77, 0) 55%), var(--card); border-color: rgba(229, 72, 77, .2); }
+.money-sum-card.net { background: linear-gradient(135deg, rgba(79, 140, 255, .09), rgba(79, 140, 255, 0) 55%), var(--card); border-color: rgba(79, 140, 255, .22); }
+.money-sum-card.net .money-sum-t { color: var(--accent); }
+
+.k-save { background: rgba(79, 140, 255, .16); color: var(--accent); }
+.k-invest { background: rgba(164, 120, 255, .16); color: #b28aff; }
+.c-save { color: var(--accent); }
+.c-inv { color: #b28aff; }
+
+.kind-opt.sel-save { border-color: var(--accent); color: var(--accent); background: rgba(79, 140, 255, .1); }
+.kind-opt.sel-invest { border-color: #b28aff; color: #b28aff; background: rgba(164, 120, 255, .1); }
+
+.money-chart-days.dense span { font-size: 9px; }
+.money-chart.dense { height: 130px; }
+
+@media (max-width: 640px) {
+  .money-save-row { grid-template-columns: 1fr; }
+  .money-periods { margin-left: 0; width: 100%; }
+  .money-periods .mode-btn { flex: 1; text-align: center; }
+}

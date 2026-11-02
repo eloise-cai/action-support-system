@@ -46,7 +46,7 @@
     <button class="tab" data-tab="stats">归纳统计</button>
     <button class="tab" data-tab="month">月历</button>
     <button class="tab" data-tab="points">积分奖励</button>
-    <button class="tab" data-tab="money">每周收支</button>
+    <button class="tab" data-tab="money">收支</button>
     <button class="tab" data-tab="schedule">每日日程</button>
     <button class="tab" data-tab="mind">心理</button>  </nav>
 
@@ -176,25 +176,34 @@
     <section id="tab-money" class="tab-pane hidden">
       <div class="pane-head">
         <div>
-          <h2>每周收支</h2>
-          <p class="pane-desc">记录每天的收入与开支，按周统计；看得见的数字比感觉更可靠</p>
+          <h2>收支</h2>
+          <p class="pane-desc">收入支出按周 / 月 / 年统计；储蓄和投资单独记，和日常开销分开放</p>
         </div>
         <button id="addMoneyBtn" class="btn primary">＋ 记一笔</button>
       </div>
       <div class="date-nav">
-        <button id="prevWeekBtn" class="btn ghost small">‹</button>
-        <span id="weekLabel" class="date-label" style="min-width:190px;text-align:center"></span>
-        <button id="nextWeekBtn" class="btn ghost small">›</button>
-        <button id="thisWeekBtn" class="btn ghost small">本周</button>
+        <button id="prevPeriodBtn" class="btn ghost small">‹</button>
+        <span id="periodLabel" class="date-label" style="min-width:190px;text-align:center"></span>
+        <button id="nextPeriodBtn" class="btn ghost small">›</button>
+        <button id="thisPeriodBtn" class="btn ghost small">回到当前</button>
+        <div class="mode-switch money-periods">
+          <button class="mode-btn active" data-period="week">周</button>
+          <button class="mode-btn" data-period="month">月</button>
+          <button class="mode-btn" data-period="year">年</button>
+        </div>
       </div>
       <div class="money-summary">
-        <div class="money-sum-card in"><div class="money-sum-t">本周收入</div><div class="money-sum-v" id="weekIncome">¥0.00</div></div>
-        <div class="money-sum-card out"><div class="money-sum-t">本周支出</div><div class="money-sum-v" id="weekExpense">¥0.00</div></div>
-        <div class="money-sum-card net"><div class="money-sum-t">本周结余</div><div class="money-sum-v" id="weekNet">¥0.00</div></div>
+        <div class="money-sum-card in"><div class="money-sum-t" id="sumInT">本周收入</div><div class="money-sum-v" id="weekIncome">¥0.00</div></div>
+        <div class="money-sum-card out"><div class="money-sum-t" id="sumOutT">本周支出</div><div class="money-sum-v" id="weekExpense">¥0.00</div></div>
+        <div class="money-sum-card net"><div class="money-sum-t" id="sumNetT">本周结余</div><div class="money-sum-v" id="weekNet">¥0.00</div></div>
+      </div>
+      <div class="money-save-row">
+        <div class="money-save-card save"><div class="money-sum-t">🏦 现有储蓄</div><div class="money-sum-v" id="totalSave">¥0.00</div><div class="money-save-sub" id="periodSave">本期转入 ¥0.00</div></div>
+        <div class="money-save-card invest"><div class="money-sum-t">📈 现有投资</div><div class="money-sum-v" id="totalInvest">¥0.00</div><div class="money-save-sub" id="periodInvest">本期转入 ¥0.00</div></div>
       </div>
       <div class="money-chart-wrap">
         <div id="moneyChart" class="money-chart"></div>
-        <div class="money-chart-days"><span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span><span>日</span></div>
+        <div id="moneyChartDays" class="money-chart-days"></div>
       </div>
       <div id="moneyList" class="money-list"></div>
     </section>
@@ -251,9 +260,8 @@
     </div>
 
     <div id="mind-abc" class="mind-pane hidden">
-      <div class="abc-layout">
-        <div class="abc-card">
-          <h3>记下这一次情绪（ABC）</h3>
+      <div class="abc-card">
+        <h3>记下这一次情绪（ABC）</h3>
         <div class="abc-row2">
           <div>
             <label class="modal-label">日期</label>
@@ -279,12 +287,9 @@
         <div class="modal-actions" style="margin-top:14px">
           <button id="abcSaveBtn" class="btn primary block">保存这条记录</button>
         </div>
-        </div>
-        <div class="abc-side">
-          <h3 class="abc-list-title">过去的记录</h3>
-          <div id="abcList" class="abc-list"><div class="stats-empty">还没有记录</div></div>
-        </div>
       </div>
+      <h3 class="abc-list-title">过去的记录</h3>
+      <div id="abcList" class="abc-list"><div class="stats-empty">还没有记录</div></div>
     </div>
 
     <div id="mind-aid" class="mind-pane hidden">

@@ -39,7 +39,8 @@ let points = []; // 积分流水
 let rewards = []; // 心愿奖励
 let goals = []; // 月目标
 let moneyRecords = []; // 收支记录
-let moneyWeek = null; // 收支页当前查看的某一天 { y, m, d }（null = 本周）
+let moneyPeriod = "week"; // 收支页统计口径：week | month | year
+let moneyAnchor = null; // 收支页当前查看的锚点日期 { y, m, d }（null = 当前周期）
 let userCode = null; // 用户唯一 ID（user_profiles）
 let monthView = null; // 月历当前查看的 { y, m }（null = 本月）
 let events = []; // 当前选中日期的日程
@@ -276,7 +277,7 @@ $id("userLabel").addEventListener("click", () => {
 cloud.auth.onAuthStateChange((event) => {
   if (event === "SIGNED_OUT") {
     tasks = []; subtasks = []; sessions = []; items = []; events = [];
-    points = []; rewards = []; goals = []; moneyRecords = []; userCode = null; profileId = null; moneyWeek = null;
+    points = []; rewards = []; goals = []; moneyRecords = []; userCode = null; profileId = null; moneyPeriod = "week"; moneyAnchor = null;
     chatMsgs = []; abcRecords = []; abcLoaded = false;
     saveChatStorage();
     exitLayer();
@@ -2069,122 +2070,208 @@ function renderBadgeWall() {
   wall.innerHTML = html;
 }
 
-/* ============ 每周收支 ============ */
+/* ============ 收支（周 / 月 / 年 + 储蓄投资） ============ */
 function weekStartOf(d) {
   const x = new Date(d.getFullYear(), d.getMonth(), d.getDate());
   const wd = (x.getDay() + 6) % 7; // 周一为一周开始
   x.setDate(x.getDate() - wd);
   return x;
 }
-function moneyWeekDays() {
-  const base = moneyWeek ? new Date(moneyWeek.y, moneyWeek.m, moneyWeek.d) : new Date();
-  const start = weekStartOf(base);
-  const days = [];
-  for (let i = 0; i < 7; i++) { const d = new Date(start); d.setDate(start.getDate() + i); days.push(d); }
-  return days;
-}
-function shiftWeek(delta) {
-  const base = moneyWeek ? new Date(moneyWeek.y, moneyWeek.m, moneyWeek.d) : new Date();
-  base.setDate(base.getDate() + delta * 7);
-  moneyWeek = { y: base.getFullYear(), m: base.getMonth(), d: base.getDate() };
-  renderMoney();
-}
 function fmtYuan(n) { return "¥" + (Math.round(n * 100) / 100).toFixed(2); }
 
 const MONEY_CATS = {
   expense: ["餐饮", "交通", "购物", "娱乐", "居住", "医疗", "学习", "订阅", "其他"],
   income: ["工资", "兼职", "理财", "红包", "退款", "其他"],
+  save: ["定期存款", "活期存款", "货币基金", "攒钱计划", "其他"],
+  invest: ["基金", "股票", "债券", "黄金", "养老账户", "其他"],
+};
+const MONEY_KINDS = {
+  expense: { t: "支", cls: "k-out", amtCls: "c-exp", sign: "−", name: "支出" },
+  income: { t: "收", cls: "k-in", amtCls: "c-inc", sign: "+", name: "收入" },
+  save: { t: "储", cls: "k-save", amtCls: "c-save", sign: "", name: "储蓄" },
+  invest: { t: "投", cls: "k-invest", amtCls: "c-inv", sign: "", name: "投资" },
 };
 
-function renderMoney() {
-  const days = moneyWeekDays();
-  const start = days[0], end = days[6];
-  const label = (start.getMonth() + 1) + "月" + start.getDate() + " 日 ~ " + (end.getMonth() + 1) + "月" + end.getDate() + " 日" +
-    (moneyWeek ? "" : "（本周）");
-  const lbl = $id("weekLabel");
-  if (lbl) lbl.textContent = label;
+/* 当前统计周期的起止 / 柱状图列 / 标题 */
+function moneyRange() {
+  const a = moneyAnchor ? new Date(moneyAnchor.y, moneyAnchor.m, moneyAnchor.d) : new Date();
+  if (moneyPeriod === "week") {
+    const start = weekStartOf(a);
+    const end = new Date(start); end.setDate(start.getDate() + 6);
+    const cols = [];
+    for (let i = 0; i < 7; i++) {
+      const s = new Date(start); s.setDate(start.getDate() + i);
+      cols.push({ s, e: s, label: "一二三四五六日"[i] });
+    }
+    return { start, end, cols, group: "day", dense: false,
+      label: (start.getMonth() + 1) + "月" + start.getDate() + "日 ~ " + (end.getMonth() + 1) + "月" + end.getDate() + "日" + (moneyAnchor ? "" : "（本周）") };
+  }
+  if (moneyPeriod === "month") {
+    const start = new Date(a.getFullYear(), a.getMonth(), 1);
+    const end = new Date(a.getFullYear(), a.getMonth() + 1, 0);
+    const cols = [];
+    for (let d = 1; d <= end.getDate(); d++) {
+      const s = new Date(a.getFullYear(), a.getMonth(), d);
+      cols.push({ s, e: s, label: String(d) });
+    }
+    return { start, end, cols, group: "day", dense: true,
+      label: a.getFullYear() + "年" + (a.getMonth() + 1) + "月" + (moneyAnchor ? "" : "（本月）") };
+  }
+  const start = new Date(a.getFullYear(), 0, 1);
+  const end = new Date(a.getFullYear(), 11, 31);
+  const cols = [];
+  for (let m = 0; m < 12; m++) {
+    cols.push({ s: new Date(a.getFullYear(), m, 1), e: new Date(a.getFullYear(), m + 1, 0), label: (m + 1) + "月" });
+  }
+  return { start, end, cols, group: "month", dense: false,
+    label: a.getFullYear() + " 年" + (moneyAnchor ? "" : "（今年）") };
+}
+function colKey(R, col) {
+  return R.group === "day" ? localDateStr(col.s) : localDateStr(col.s).slice(0, 7);
+}
+function shiftMoney(delta) {
+  const a = moneyAnchor ? new Date(moneyAnchor.y, moneyAnchor.m, moneyAnchor.d) : new Date();
+  if (moneyPeriod === "week") a.setDate(a.getDate() + delta * 7);
+  else if (moneyPeriod === "month") a.setMonth(a.getMonth() + delta);
+  else a.setFullYear(a.getFullYear() + delta);
+  moneyAnchor = { y: a.getFullYear(), m: a.getMonth(), d: a.getDate() };
+  renderMoney();
+}
 
-  const inWeek = moneyRecords.filter(r => {
+function renderMoney() {
+  const R = moneyRange();
+  const lbl = $id("periodLabel");
+  if (lbl) lbl.textContent = R.label;
+  const unit = { week: "本周", month: "本月", year: "今年" }[moneyPeriod];
+  for (const [id, t] of [["sumInT", unit + "收入"], ["sumOutT", unit + "支出"], ["sumNetT", unit + "结余"]]) {
+    const el = $id(id); if (el) el.textContent = t;
+  }
+
+  const sStr = localDateStr(R.start), eStr = localDateStr(R.end);
+  const inRange = moneyRecords.filter(r => {
     const k = r.record_date ? String(r.record_date).slice(0, 10) : null;
-    return k && k >= localDateStr(start) && k <= localDateStr(end);
+    return k && k >= sStr && k <= eStr;
   });
-  let inc = 0, exp = 0;
-  const byDay = {}; // dateStr -> { inc, exp }
-  const byKindDay = {}; // dateStr -> { income:[], expense:[] }
-  for (const r of inWeek) {
+  let inc = 0, exp = 0, sv = 0, iv = 0;
+  const byKey = {}; // 列 key -> { inc, exp, sv, iv }
+  for (const r of inRange) {
     const k = String(r.record_date).slice(0, 10);
-    const amt = parseFloat(r.amount) || 0;
-    if (!byDay[k]) byDay[k] = { inc: 0, exp: 0 };
-    if (r.kind === "income") { byDay[k].inc += amt; inc += amt; }
-    else { byDay[k].exp += amt; exp += amt; }
+    const key = R.group === "day" ? k : k.slice(0, 7);
+    if (!byKey[key]) byKey[key] = { inc: 0, exp: 0, sv: 0, iv: 0 };
+    const b = byKey[key], amt = parseFloat(r.amount) || 0;
+    if (r.kind === "income") { b.inc += amt; inc += amt; }
+    else if (r.kind === "expense") { b.exp += amt; exp += amt; }
+    else if (r.kind === "save") { b.sv += amt; sv += amt; }
+    else { b.iv += amt; iv += amt; }
   }
   if ($id("weekIncome")) $id("weekIncome").textContent = fmtYuan(inc);
   if ($id("weekExpense")) $id("weekExpense").textContent = fmtYuan(exp);
   const net = inc - exp;
   const netEl = $id("weekNet");
-  if (netEl) { netEl.textContent = (net >= 0 ? "+" : "−") + fmtYuan(Math.abs(net)).slice(0); netEl.style.color = net >= 0 ? "var(--green)" : "var(--red)"; }
+  if (netEl) { netEl.textContent = (net >= 0 ? "+" : "−") + fmtYuan(Math.abs(net)); netEl.style.color = net >= 0 ? "var(--green)" : "var(--red)"; }
 
-  // 7 日柱状图（按支出高度）
-  const maxExp = Math.max(1, ...days.map(d => (byDay[localDateStr(d)] || { exp: 0 }).exp));
+  /* 储蓄与投资：累计 + 本期转入 */
+  let totalSave = 0, totalInvest = 0;
+  for (const r of moneyRecords) {
+    if (r.kind === "save") totalSave += parseFloat(r.amount) || 0;
+    else if (r.kind === "invest") totalInvest += parseFloat(r.amount) || 0;
+  }
+  if ($id("totalSave")) $id("totalSave").textContent = fmtYuan(totalSave);
+  if ($id("totalInvest")) $id("totalInvest").textContent = fmtYuan(totalInvest);
+  if ($id("periodSave")) $id("periodSave").textContent = unit + "转入 " + fmtYuan(sv);
+  if ($id("periodInvest")) $id("periodInvest").textContent = unit + "转入 " + fmtYuan(iv);
+
+  /* 柱状图（按支出高度） */
   const todayStr = localDateStr(new Date());
+  const curMonthKey = todayStr.slice(0, 7);
   const chart = $id("moneyChart");
+  const daysBar = $id("moneyChartDays");
   if (chart) {
-    chart.innerHTML = days.map(d => {
-      const k = localDateStr(d);
-      const e = (byDay[k] || { exp: 0 }).exp;
+    chart.style.gridTemplateColumns = "repeat(" + R.cols.length + ", 1fr)";
+    const maxExp = Math.max(1, ...R.cols.map(c => (byKey[colKey(R, c)] || { exp: 0 }).exp));
+    chart.innerHTML = R.cols.map(c => {
+      const key = colKey(R, c);
+      const e = (byKey[key] || { exp: 0 }).exp;
       const h = Math.round(e / maxExp * 100);
-      const isToday = k === todayStr;
-      return '<div class="money-col' + (isToday ? " today" : "") + '" title="' + k + (e ? " 支出 " + fmtYuan(e) : " 无支出") + '">' +
+      const cur = R.group === "day" ? key === todayStr : key === curMonthKey;
+      return '<div class="money-col' + (cur ? " today" : "") + '" title="' + key + (e ? " 支出 " + fmtYuan(e) : " 无支出") +
+        ((byKey[key] && (byKey[key].sv || byKey[key].iv)) ? " · 储 " + fmtYuan(byKey[key].sv) + " 投 " + fmtYuan(byKey[key].iv) : "") + '">' +
         (e > 0 ? '<span class="money-col-v">' + Math.round(e) + "</span>" : "") +
         '<div class="money-bar" style="height:' + Math.max(e > 0 ? 6 : 2, h) + '%"></div>' +
         "</div>";
     }).join("");
+    if (daysBar) {
+      daysBar.style.gridTemplateColumns = "repeat(" + R.cols.length + ", 1fr)";
+      daysBar.className = "money-chart-days" + (R.dense ? " dense" : "");
+      daysBar.innerHTML = R.cols.map(c => "<span>" + c.label + "</span>").join("");
+    }
   }
 
-  // 明细列表（按天倒序）
+  /* 明细列表（按天 / 按月分组倒序） */
   const list = $id("moneyList");
   if (list) {
-    const dayKeys = days.map(d => localDateStr(d)).reverse();
+    const keys = R.cols.map(c => colKey(R, c)).reverse();
     const rowsHtml = [];
-    for (const k of dayKeys) {
-      const dayRows = inWeek.filter(r => String(r.record_date).slice(0, 10) === k)
-        .sort((a, b) => b.id - a.id);
+    for (const key of keys) {
+      const dayRows = inRange.filter(r => {
+        const k = String(r.record_date).slice(0, 10);
+        return (R.group === "day" ? k : k.slice(0, 7)) === key;
+      }).sort((a, b) => b.id - a.id);
       if (!dayRows.length) continue;
-      const d = new Date(k + "T00:00:00");
-      rowsHtml.push('<div class="money-day-t">' + (d.getMonth() + 1) + "月" + d.getDate() + " 日" +
-        (k === todayStr ? " · 今天" : "") +
+      let title;
+      if (R.group === "day") {
+        const d = new Date(key + "T00:00:00");
+        title = (d.getMonth() + 1) + "月" + d.getDate() + " 日" + (key === todayStr ? " · 今天" : "");
+      } else {
+        const d = new Date(key + "-01T00:00:00");
+        title = d.getFullYear() + "年" + (d.getMonth() + 1) + "月";
+      }
+      const g = byKey[key] || { inc: 0, exp: 0 };
+      rowsHtml.push('<div class="money-day-t">' + title +
         '<span class="money-day-sum">' +
-        (byDay[k].inc ? '<b class="c-inc">+' + fmtYuan(byDay[k].inc).slice(1) + "</b>" : "") +
-        (byDay[k].exp ? '<b class="c-exp">−' + fmtYuan(byDay[k].exp).slice(1) + "</b>" : "") +
+        (g.inc ? '<b class="c-inc">+' + fmtYuan(g.inc).slice(1) + "</b>" : "") +
+        (g.exp ? '<b class="c-exp">−' + fmtYuan(g.exp).slice(1) + "</b>" : "") +
         "</span></div>");
-      rowsHtml.push(dayRows.map(r =>
-        '<div class="money-row"><span class="money-kind ' + (r.kind === "income" ? "k-in" : "k-out") + '">' +
-        (r.kind === "income" ? "收" : "支") + "</span>" +
-        '<span class="money-cat">' + esc(r.category || "其他") + "</span>" +
-        '<span class="money-note">' + esc(r.note || "") + "</span>" +
-        '<span class="money-amt ' + (r.kind === "income" ? "c-inc" : "c-exp") + '">' +
-        (r.kind === "income" ? "+" : "−") + fmtYuan(parseFloat(r.amount) || 0).slice(1) + "</span>" +
-        '<button class="money-del" data-delmoney="' + r.id + '" title="删除">✕</button>' +
-        "</div>").join(""));
+      rowsHtml.push(dayRows.map(r => {
+        const m = MONEY_KINDS[r.kind] || MONEY_KINDS.expense;
+        const amt = fmtYuan(parseFloat(r.amount) || 0).slice(1);
+        return '<div class="money-row"><span class="money-kind ' + m.cls + '">' + m.t + "</span>" +
+          '<span class="money-cat">' + esc(r.category || "其他") + "</span>" +
+          '<span class="money-note">' + esc(r.note || "") + "</span>" +
+          '<span class="money-amt ' + m.amtCls + '">' + (m.sign ? m.sign : "") + amt + "</span>" +
+          '<button class="money-del" data-delmoney="' + r.id + '" title="删除">✕</button>' +
+          "</div>";
+      }).join(""));
     }
     list.innerHTML = rowsHtml.length ? rowsHtml.join("") :
-      '<div class="stats-empty">这周还没有记录。点右上角「＋ 记一笔」，把每一笔收入和开支记下来 🧾</div>';
+      '<div class="stats-empty">这段时间还没有记录。点右上角「＋ 记一笔」，把收入、开支、储蓄和投资都记下来 🧾</div>';
   }
 }
 
-$id("prevWeekBtn").addEventListener("click", () => shiftWeek(-1));
-$id("nextWeekBtn").addEventListener("click", () => shiftWeek(1));
-$id("thisWeekBtn").addEventListener("click", () => { moneyWeek = null; renderMoney(); });
+$id("prevPeriodBtn").addEventListener("click", () => shiftMoney(-1));
+$id("nextPeriodBtn").addEventListener("click", () => shiftMoney(1));
+$id("thisPeriodBtn").addEventListener("click", () => { moneyAnchor = null; renderMoney(); });
+$id("tab-money").addEventListener("click", (e) => {
+  const b = e.target.closest(".money-periods .mode-btn");
+  if (!b || b.dataset.period === moneyPeriod) return;
+  moneyPeriod = b.dataset.period;
+  $id("tab-money").querySelectorAll(".money-periods .mode-btn").forEach(x => x.classList.toggle("active", x === b));
+  moneyAnchor = null;
+  renderMoney();
+});
 
 $id("addMoneyBtn").addEventListener("click", () => {
-  const viewDays = moneyWeekDays();
-  const defDate = moneyWeek ? localDateStr(viewDays[6]) : localDateStr(new Date());
+  const R = moneyRange();
+  const defDate = moneyAnchor ? localDateStr(R.end > new Date() ? new Date() : R.end) : localDateStr(new Date());
+  const kindBtns = [
+    '<button class="kind-opt k-out sel-expense" data-kind="expense">支出 💸</button>',
+    '<button class="kind-opt k-in" data-kind="income">收入 💰</button>',
+    '<button class="kind-opt k-save" data-kind="save">储蓄 🏦</button>',
+    '<button class="kind-opt k-invest" data-kind="invest">投资 📈</button>',
+  ].join("");
   openModal(
     "<h3>记一笔</h3>" +
-    '<div class="money-kind-pick" id="mKindPick">' +
-    '<button class="kind-opt k-out sel-expense" data-kind="expense">支出 💸</button>' +
-    '<button class="kind-opt k-in" data-kind="income">收入 💰</button>' +
-    "</div>" +
+    '<div class="money-kind-pick" id="mKindPick">' + kindBtns + "</div>" +
     '<div class="abc-row2">' +
     "<div><label class=\"modal-label\">金额</label>" +
     '<input id="mMoneyAmt" class="modal-input" type="number" min="0.01" step="0.01" placeholder="0.00"></div>' +
@@ -2211,8 +2298,8 @@ $id("addMoneyBtn").addEventListener("click", () => {
     const b = e.target.closest(".kind-opt");
     if (!b || b.dataset.kind === kind) return;
     kind = b.dataset.kind;
-    pick.querySelectorAll(".kind-opt").forEach(x => x.classList.remove("sel-expense", "sel-income"));
-    b.classList.add(kind === "expense" ? "sel-expense" : "sel-income");
+    pick.querySelectorAll(".kind-opt").forEach(x => x.classList.remove("sel-expense", "sel-income", "sel-save", "sel-invest"));
+    b.classList.add("sel-" + kind);
     fillCats();
   });
   $id("mMoneyAmt").focus();
@@ -2226,11 +2313,11 @@ $id("addMoneyBtn").addEventListener("click", () => {
     }).select());
     if (rows && rows[0]) {
       moneyRecords.push(rows[0]);
-      moneyWeek = { y: Number(date.slice(0, 4)), m: Number(date.slice(5, 7)) - 1, d: Number(date.slice(8, 10)) };
+      moneyAnchor = { y: Number(date.slice(0, 4)), m: Number(date.slice(5, 7)) - 1, d: Number(date.slice(8, 10)) };
     }
     closeModal();
     renderMoney();
-    toast((kind === "income" ? "收入" : "支出") + "已记录：" + fmtYuan(amt));
+    toast(MONEY_KINDS[kind].name + "已记录：" + fmtYuan(amt));
   };
   $id("mMoneySave").addEventListener("click", save);
   $id("mMoneyAmt").addEventListener("keydown", e => { if (e.key === "Enter") save(); });
@@ -2241,9 +2328,10 @@ $id("moneyList").addEventListener("click", async (e) => {
   if (!del) return;
   const id = +del.dataset.delmoney;
   const r = moneyRecords.find(x => x.id === id);
+  const meta = r ? (MONEY_KINDS[r.kind] || MONEY_KINDS.expense) : MONEY_KINDS.expense;
   const ok = await confirmDialog({
     title: "删除这笔记录",
-    desc: "「" + (r && r.kind === "income" ? "收入 " : "支出 ") + fmtYuan(r ? parseFloat(r.amount) || 0 : 0) + "」将被删除。",
+    desc: "「" + meta.name + " " + fmtYuan(r ? parseFloat(r.amount) || 0 : 0) + "」将被删除。",
     okText: "删除",
   });
   if (!ok) return;
