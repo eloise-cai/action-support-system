@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>行动支持系统</title>
-<link rel="stylesheet" href="styles.css?v=20261102h">
+<link rel="stylesheet" href="styles.css?v=20261102i">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🍅</text></svg>">
 </head>
 <body>
@@ -190,6 +190,14 @@
       </div>
       <div class="pane-head" style="margin-top:8px">
         <div>
+          <h2 style="font-size:18px">✅ 项目打卡</h2>
+          <p class="pane-desc">想坚持的小事（喝水、背单词、早睡），在对应日期点一下打卡；每次打卡 +2 积分</p>
+        </div>
+        <button id="addCheckinBtn" class="btn primary">＋ 添加打卡项</button>
+      </div>
+      <div id="checkinList" class="checkin-list"></div>
+      <div class="pane-head" style="margin-top:8px">
+        <div>
           <h2 style="font-size:18px">🎯 月目标</h2>
           <p class="pane-desc">给自己定几个本月小目标；可关联任务，自动按已完成子任务数计进度</p>
         </div>
@@ -355,6 +363,6 @@
 <div id="toast" class="toast hidden"></div>
 
 <script src="https://cdn.jsdelivr.net/npm/@tencent-ai/workbuddy-cloud-sdk@dev/lib/index.global.js"></script>
-<script src="app.js?v=20261102h"></script>
+<script src="app.js?v=20261102i"></script>
 </body>
 </html>

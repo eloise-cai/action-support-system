@@ -42,6 +42,8 @@ let moneyRecords = []; // 收支记录
 let moneyPeriod = "week"; // 收支页统计口径：week | month | year
 let moneyAnchor = null; // 收支页当前查看的锚点日期 { y, m, d }（null = 当前周期）
 let longtermTasks = []; // 长线任务（含子任务，parent_id 关联）
+let checkinItems = []; // 项目打卡：想坚持的小事
+let checkinRecords = []; // 打卡记录 { item_id, checkin_date }
 let ltView = null; // 长线月历当前查看的 { y, m }（null = 本月）
 let userCode = null; // 用户唯一 ID（user_profiles）
 let monthView = null; // 月历当前查看的 { y, m }（null = 本月）
@@ -161,7 +163,7 @@ bind("logoutBtn", "click", async () => {
 
 /* ============ 数据加载 ============ */
 async function loadAll() {
-  const [t, s, p, it, pt, rw, gl, mr, lt] = await Promise.all([
+  const [t, s, p, it, pt, rw, gl, mr, lt, ci, cr] = await Promise.all([
     cloud.database.from("tasks").select("*").order("sort_order").order("id"),
     cloud.database.from("subtasks").select("*").order("id"),
     cloud.database.from("pomodoro_sessions").select("*").order("started_at").limit(5000),
@@ -171,8 +173,10 @@ async function loadAll() {
     cloud.database.from("monthly_goals").select("*").order("id"),
     cloud.database.from("money_records").select("*").order("record_date").order("id").limit(5000),
     cloud.database.from("longterm_tasks").select("*").order("sort_order").order("id"),
+    cloud.database.from("checkin_items").select("*").order("id"),
+    cloud.database.from("checkin_records").select("*").order("checkin_date").order("id").limit(5000),
   ]);
-  const err = t.error || s.error || p.error || it.error || pt.error || rw.error || gl.error || mr.error || lt.error;
+  const err = t.error || s.error || p.error || it.error || pt.error || rw.error || gl.error || mr.error || lt.error || ci.error || cr.error;
   if (err) {
     toast("数据加载失败：" + (err.message || "请刷新重试"), true);
     return;
@@ -190,6 +194,8 @@ async function loadAll() {
   goals = gl.data || [];
   moneyRecords = mr.data || [];
   longtermTasks = lt.data || [];
+  checkinItems = ci.data || [];
+  checkinRecords = cr.data || [];
   renderPointsChip();
 }
 
@@ -286,7 +292,7 @@ cloud.auth.onAuthStateChange((event) => {
   if (event === "SIGNED_OUT") {
     tasks = []; subtasks = []; sessions = []; items = []; events = [];
     points = []; rewards = []; goals = []; moneyRecords = []; userCode = null; profileId = null; moneyPeriod = "week"; moneyAnchor = null;
-    longtermTasks = [];
+    longtermTasks = []; checkinItems = []; checkinRecords = [];
     applyTheme("default"); // 退出登录恢复默认主题
     chatMsgs = []; abcRecords = []; abcLoaded = false;
     saveChatStorage();
@@ -2502,6 +2508,7 @@ function renderMonth() {
   $id("mDoneRate").textContent = rate + "%";
   $id("mDoneAvg").textContent = (doneThisMonth / Math.max(1, daysElapsed)).toFixed(1);
 
+  renderCheckins();
   renderGoals();
 }
 
@@ -2541,6 +2548,119 @@ function renderGoals() {
 bind("prevMonthBtn", "click", () => shiftMonth(-1));
 bind("nextMonthBtn", "click", () => shiftMonth(1));
 bind("thisMonthBtn", "click", () => { monthView = null; renderMonth(); });
+
+/* --- 项目打卡：跟月历同一个月份导航，1..31 每天一格，点一下打卡 --- */
+function checkinRecordMap(itemId) {
+  const set = new Set();
+  for (const r of checkinRecords) if (r.item_id === itemId) set.add(ymd(r.checkin_date));
+  return set;
+}
+function renderCheckins() {
+  const list = $id("checkinList");
+  if (!list) return;
+  if (!checkinItems.length) {
+    list.innerHTML = '<div class="stats-empty">还没有打卡项目。点右上角「＋ 添加打卡项」，比如「喝水 8 杯」「背 20 个单词」「23 点前睡」💧</div>';
+    return;
+  }
+  const { y, m } = mvDate();
+  const dim = daysInMonth(y, m);
+  const now = new Date();
+  const isThisMonth = y === now.getFullYear() && m === now.getMonth();
+  const todayD = now.getDate();
+  const pre = y + "-" + String(m + 1).padStart(2, "0") + "-";
+  list.innerHTML = checkinItems.map(it => {
+    const set = checkinRecordMap(it.id);
+    const monthCnt = [...set].filter(d => d.slice(0, 8) === pre).length;
+    let cells = "";
+    for (let d = 1; d <= dim; d++) {
+      const ds = pre + String(d).padStart(2, "0");
+      const future = isThisMonth && d > todayD;
+      const checked = set.has(ds);
+      const isToday = isThisMonth && d === todayD;
+      cells += '<button class="ci-cell' + (checked ? " checked" : "") + (isToday ? " today" : "") + (future ? " future" : "") +
+        '" data-ci="' + it.id + '" data-day="' + ds + '" title="' + (m + 1) + "月" + d + "日" + (checked ? " · 已打卡" : "") + '">' +
+        (checked ? "✓" : d) + "</button>";
+    }
+    return '<div class="checkin-row">' +
+      '<div class="ci-top"><span class="ci-name">' + esc(it.name) + '</span>' +
+      '<span class="ci-cnt">本月 ' + monthCnt + " / " + dim + ' 天</span>' +
+      '<button class="sub-del" data-cidel="' + it.id + '" title="删除打卡项">✕</button></div>' +
+      '<div class="ci-grid">' + cells + "</div></div>";
+  }).join("");
+}
+
+bind("addCheckinBtn", "click", () => {
+  openModal(
+    "<h3>添加打卡项目</h3>" +
+    '<label class="modal-label">想坚持的小事（一件就好，越小越好）</label>' +
+    '<input id="mCiName" class="modal-input" maxlength="20" placeholder="例：喝水 8 杯 / 背 20 个单词 / 23 点前睡">' +
+    '<div class="modal-actions">' +
+    '<button class="btn ghost" data-close="1">取消</button>' +
+    '<button class="btn primary" id="mCiSave">添加</button>' +
+    "</div>"
+  );
+  const input = $id("mCiName");
+  input.focus();
+  const save = async () => {
+    const name = input.value.trim();
+    if (!name) { toast("请输入打卡项目名称", true); return; }
+    const rows = await db(cloud.database.from("checkin_items").insert({ name }).select());
+    if (rows && rows[0]) checkinItems.push(rows[0]);
+    closeModal();
+    renderCheckins();
+    toast("已添加打卡项：" + name);
+  };
+  bind("mCiSave", "click", save);
+  input.addEventListener("keydown", e => { if (e.key === "Enter" && !e.isComposing && e.keyCode !== 229) save(); });
+});
+
+/* 打卡/取消：打卡 +2 积分（彩纸庆祝），取消原额扣回（不自欺，防刷分） */
+const ciListEl = $id("checkinList");
+if (ciListEl) {
+  ciListEl.addEventListener("click", async e => {
+    const del = e.target.closest("[data-cidel]");
+    if (del) {
+      const it = checkinItems.find(x => x.id == del.dataset.cidel);
+      if (!it) return;
+      const n = checkinRecords.filter(r => r.item_id == it.id).length;
+      const ok = await confirmDialog({
+        title: "删除「" + it.name + "」？",
+        desc: n ? "已有的 " + n + " 条打卡记录会一起删除（积分不回收）。" : "",
+        okText: "删除",
+      });
+      if (!ok) return;
+      await db(cloud.database.from("checkin_items").delete().eq("id", it.id));
+      checkinItems = checkinItems.filter(x => x.id !== it.id);
+      checkinRecords = checkinRecords.filter(r => r.item_id !== it.id);
+      renderCheckins();
+      return;
+    }
+    const cell = e.target.closest("[data-ci]");
+    if (!cell || cell.classList.contains("future")) return; // 未来日期不能打卡
+    const itemId = +cell.dataset.ci, day = cell.dataset.day;
+    const it = checkinItems.find(x => x.id === itemId);
+    if (!it) return;
+    const checked = cell.classList.contains("checked");
+    if (!checked) {
+      try {
+        const rows = await db(cloud.database.from("checkin_records").insert({ item_id: itemId, checkin_date: day }).select());
+        if (rows && rows[0]) checkinRecords.push(rows[0]);
+        celebrate();
+        sayCompanion("打卡成功，小小的坚持也在攒力量！");
+        await awardPoints(2, "打卡：" + it.name + " " + day.slice(5), "checkin", itemId);
+        renderCheckins();
+      } catch (err) { /* db() 已提示（重复打卡会被唯一索引拦下） */ }
+    } else {
+      const rec = checkinRecords.find(r => r.item_id === itemId && ymd(r.checkin_date) === day);
+      if (!rec) return;
+      await db(cloud.database.from("checkin_records").delete().eq("id", rec.id));
+      checkinRecords = checkinRecords.filter(r => r.id !== rec.id);
+      await awardPoints(-2, "取消打卡：" + it.name + " " + day.slice(5), "checkin", itemId);
+      renderCheckins();
+    }
+  });
+}
+
 
 bind("addGoalBtn", "click", () => {
   const taskOpts = tasks.map(t => '<option value="' + t.id + '">' + catOf(t).icon + " " + esc(t.title) + "</option>").join("");
