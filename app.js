@@ -3420,7 +3420,8 @@ function renderLtCal() {
   const trackCells = d => { let h = ""; for (let i = 1; i <= dim; i++) h += d ? dayCell(i, false) : '<span class="lt-day"></span>'; return h; };
 
   let html = '<div class="lt-row lt-head-row"><div class="lt-name"></div><div class="lt-track">';
-  for (let i = 0; i < firstDow; i++) html += '<span class="lt-day hd blank"></span>';
+  /* 甘特表头不按周几前置空格：1..dim 与下方任务行的格子一一对应，
+     否则像 11 月这样开头空格多的月份，表头格数比任务行多、数字会被挤到重叠 */
   for (let d = 1; d <= dim; d++) html += dayCell(d, true);
   html += "</div></div>";
 
