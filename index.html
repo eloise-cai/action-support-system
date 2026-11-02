@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>行动支持系统</title>
-<link rel="stylesheet" href="styles.css?v=20261102d">
+<link rel="stylesheet" href="styles.css?v=20261102e">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🍅</text></svg>">
 </head>
 <body>
@@ -92,15 +92,38 @@
       <div id="layersGrid" class="cards-grid"></div>
     </section>
 
-    <!-- 归纳统计 -->
+    <!-- 归纳统计：左 中短期任务 / 右 长线任务 -->
     <section id="tab-stats" class="tab-pane hidden">
-      <div class="pane-head">
-        <div>
-          <h2>归纳统计</h2>
-          <p class="pane-desc">各任务标题下的完成情况与累计用时；进度优先按子子任务计（没拆的子任务按自身计）</p>
+      <div class="stats-split">
+        <div class="stats-col">
+          <div class="pane-head">
+            <div>
+              <h2>归纳统计</h2>
+              <p class="pane-desc">中短期任务：各任务标题下的完成情况与累计用时；进度优先按子子任务计（没拆的子任务按自身计）</p>
+            </div>
+          </div>
+          <div id="statsList" class="stats-list"></div>
+        </div>
+        <div class="stats-col">
+          <div class="pane-head">
+            <div>
+              <h2>长线任务</h2>
+              <p class="pane-desc">周期以周 / 月计的大目标：每条任务和子任务都有时间线，像手账一样铺在下面的月历里</p>
+            </div>
+            <button id="addLtBtn" class="btn primary">＋ 添加长线任务</button>
+          </div>
+          <div class="lt-cal card">
+            <div class="lt-cal-head">
+              <button id="ltPrevBtn" class="btn ghost sm">‹</button>
+              <b id="ltMonthLabel"></b>
+              <button id="ltNextBtn" class="btn ghost sm">›</button>
+              <button id="ltTodayBtn" class="btn ghost sm">今天</button>
+            </div>
+            <div id="ltCalGrid" class="lt-cal-grid"></div>
+          </div>
+          <div id="ltList" class="lt-list"></div>
         </div>
       </div>
-      <div id="statsList" class="stats-list"></div>
     </section>
 
     <!-- 积分奖励 -->
@@ -329,6 +352,6 @@
 <div id="toast" class="toast hidden"></div>
 
 <script src="https://cdn.jsdelivr.net/npm/@tencent-ai/workbuddy-cloud-sdk@dev/lib/index.global.js"></script>
-<script src="app.js?v=20261102d"></script>
+<script src="app.js?v=20261102e"></script>
 </body>
 </html>

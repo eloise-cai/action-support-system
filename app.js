@@ -41,6 +41,8 @@ let goals = []; // 月目标
 let moneyRecords = []; // 收支记录
 let moneyPeriod = "week"; // 收支页统计口径：week | month | year
 let moneyAnchor = null; // 收支页当前查看的锚点日期 { y, m, d }（null = 当前周期）
+let longtermTasks = []; // 长线任务（含子任务，parent_id 关联）
+let ltView = null; // 长线月历当前查看的 { y, m }（null = 本月）
 let userCode = null; // 用户唯一 ID（user_profiles）
 let monthView = null; // 月历当前查看的 { y, m }（null = 本月）
 let events = []; // 当前选中日期的日程
@@ -159,7 +161,7 @@ bind("logoutBtn", "click", async () => {
 
 /* ============ 数据加载 ============ */
 async function loadAll() {
-  const [t, s, p, it, pt, rw, gl, mr] = await Promise.all([
+  const [t, s, p, it, pt, rw, gl, mr, lt] = await Promise.all([
     cloud.database.from("tasks").select("*").order("sort_order").order("id"),
     cloud.database.from("subtasks").select("*").order("id"),
     cloud.database.from("pomodoro_sessions").select("*").order("started_at").limit(5000),
@@ -168,8 +170,9 @@ async function loadAll() {
     cloud.database.from("rewards").select("*").order("id"),
     cloud.database.from("monthly_goals").select("*").order("id"),
     cloud.database.from("money_records").select("*").order("record_date").order("id").limit(5000),
+    cloud.database.from("longterm_tasks").select("*").order("sort_order").order("id"),
   ]);
-  const err = t.error || s.error || p.error || it.error || pt.error || rw.error || gl.error || mr.error;
+  const err = t.error || s.error || p.error || it.error || pt.error || rw.error || gl.error || mr.error || lt.error;
   if (err) {
     toast("数据加载失败：" + (err.message || "请刷新重试"), true);
     return;
@@ -186,6 +189,7 @@ async function loadAll() {
   rewards = rw.data || [];
   goals = gl.data || [];
   moneyRecords = mr.data || [];
+  longtermTasks = lt.data || [];
   renderPointsChip();
 }
 
@@ -3356,10 +3360,226 @@ bind("pomoFloat", "click", () => {
   if (sub) openSubtaskModal(sub);
 });
 
+/* ============ 长线任务：手账式月历时间线 ============ */
+/* 母任务（如：备考基金从业）+ 子任务（第一章、第二章……），每条都有起止日期，
+   在右侧月历中以横条（甘特）铺出，像手账里的时间胶带。 */
+
+function ltParents() {
+  return longtermTasks.filter(x => !x.parent_id)
+    .sort((a, b) => (a.start_date < b.start_date ? -1 : a.start_date > b.start_date ? 1 : (a.sort_order || 0) - (b.sort_order || 0)));
+}
+function ltChildren(pid) {
+  return longtermTasks.filter(x => x.parent_id === pid)
+    .sort((a, b) => (a.start_date < b.start_date ? -1 : 1));
+}
+function ltShiftMonth(delta) {
+  const now = new Date();
+  if (!ltView) ltView = { y: now.getFullYear(), m: now.getMonth() };
+  const d = new Date(ltView.y, ltView.m + delta, 1);
+  return { y: d.getFullYear(), m: d.getMonth() };
+}
+/* 任务时间线与本月的交集：[起日, 止日]；完全不在本月返回 null */
+function ltSpan(t, y, m) {
+  const sFull = ymd(t.start_date), eFull = ymd(t.end_date);
+  if (!sFull || !eFull) return null;
+  const pre = y + "-" + String(m + 1).padStart(2, "0");
+  const sM = sFull.slice(0, 7), eM = eFull.slice(0, 7);
+  if (eM < pre || sM > pre) return null;
+  const dim = daysInMonth(y, m);
+  let d1 = 1, d2 = dim;
+  if (sM === pre) d1 = parseInt(sFull.slice(8, 10), 10);
+  if (eM === pre) d2 = parseInt(eFull.slice(8, 10), 10);
+  return [Math.max(1, d1), Math.min(dim, d2)];
+}
+function md(dateStr) { /* 2026-11-02 → 11/2 */
+  const d = ymd(dateStr);
+  return d ? parseInt(d.slice(5, 7), 10) + "/" + parseInt(d.slice(8, 10), 10) : "";
+}
+
+function renderLongterm() {
+  if (!$id("ltCalGrid")) return; // 旧缓存 HTML：元素不存在时静默跳过
+  renderLtCal();
+  renderLtList();
+}
+
+function renderLtCal() {
+  const now = new Date();
+  if (!ltView) ltView = { y: now.getFullYear(), m: now.getMonth() };
+  const { y, m } = ltView;
+  $id("ltMonthLabel").textContent = y + " 年 " + (m + 1) + " 月";
+  const dim = daysInMonth(y, m);
+  const today = localDateStr(now);
+  const monthPre = y + "-" + String(m + 1).padStart(2, "0") + "-";
+  const firstDow = (new Date(y, m, 1).getDay() + 6) % 7; // 0=周一
+
+  const dayCell = (d, hd) => {
+    const wd = (firstDow + d - 1) % 7;
+    const isToday = monthPre + String(d).padStart(2, "0") === today;
+    return '<span class="lt-day' + (hd ? " hd" : "") + (wd >= 5 ? " wknd" : "") + (isToday ? " today" : "") + '">' + (hd ? d : "") + "</span>";
+  };
+  const trackCells = d => { let h = ""; for (let i = 1; i <= dim; i++) h += d ? dayCell(i, false) : '<span class="lt-day"></span>'; return h; };
+
+  let html = '<div class="lt-row lt-head-row"><div class="lt-name"></div><div class="lt-track">';
+  for (let i = 0; i < firstDow; i++) html += '<span class="lt-day hd blank"></span>';
+  for (let d = 1; d <= dim; d++) html += dayCell(d, true);
+  html += "</div></div>";
+
+  const rows = [];
+  for (const p of ltParents()) {
+    rows.push({ t: p, isParent: true });
+    for (const c of ltChildren(p.id)) rows.push({ t: c, isParent: false });
+  }
+  if (!rows.length) {
+    html += '<div class="lt-empty">还没有长线任务。点上方「＋ 添加长线任务」，比如「备考基金从业」，再拆出第一章、第二章……每条都能设自己的时间线。</div>';
+  }
+  for (const r of rows) {
+    const t = r.t;
+    const span = ltSpan(t, y, m);
+    html += '<div class="lt-row' + (r.isParent ? "" : " sub") + '">';
+    html += '<div class="lt-name" title="' + esc(t.title) + '">' + esc(t.title) + "</div>";
+    html += '<div class="lt-track">' + trackCells(false);
+    if (span) {
+      const [d1, d2] = span;
+      const left = (d1 - 1) / dim * 100, w = (d2 - d1 + 1) / dim * 100;
+      const cls = "lt-bar " + (r.isParent ? "bar-p" : "bar-c") + (t.done ? " bar-done" : "");
+      html += '<span class="' + cls + '" style="left:' + left.toFixed(2) + "%;width:" + w.toFixed(2) + '%">' + (w >= 14 ? esc(t.title) : "") + "</span>";
+    }
+    if (monthPre === today.slice(0, 8)) {
+      const d = parseInt(today.slice(8, 10), 10);
+      html += '<span class="lt-today-line" style="left:' + ((d - 0.5) / dim * 100).toFixed(2) + '%"></span>';
+    }
+    html += "</div></div>";
+  }
+  $id("ltCalGrid").innerHTML = html;
+}
+
+function renderLtList() {
+  const wrap = $id("ltList");
+  if (!wrap) return;
+  const parents = ltParents();
+  if (!parents.length) { wrap.innerHTML = ""; return; }
+  let html = "";
+  for (const p of parents) {
+    const kids = ltChildren(p.id);
+    const doneN = kids.filter(k => k.done).length;
+    html += '<div class="lt-card' + (p.done ? " done" : "") + '">';
+    html += '<div class="lt-card-top">';
+    html += '<span class="lt-title">' + esc(p.title) + "</span>";
+    html += '<span class="lt-dates">' + md(p.start_date) + " - " + md(p.end_date) + "</span>";
+    if (kids.length) html += '<span class="lt-prog">子任务 ' + doneN + "/" + kids.length + "</span>";
+    html += "</div>";
+    html += '<div class="lt-ops">';
+    html += '<button class="btn ghost small" data-act="done" data-id="' + p.id + '">' + (p.done ? "↩ 恢复" : "✓ 完成") + "</button>";
+    html += '<button class="btn ghost small" data-act="add" data-id="' + p.id + '">＋ 子任务</button>';
+    html += '<button class="btn ghost small" data-act="edit" data-id="' + p.id + '">✎ 编辑</button>';
+    html += '<button class="btn ghost small" data-act="del" data-id="' + p.id + '">🗑 删除</button>';
+    html += "</div>";
+    if (kids.length) {
+      html += '<div class="lt-subs">';
+      for (const k of kids) {
+        html += '<div class="lt-sub-item' + (k.done ? " done" : "") + '">';
+        html += '<button class="lt-icon-btn" data-act="done" data-id="' + k.id + '">' + (k.done ? "✅" : "⬜") + "</button>";
+        html += '<span class="lt-sub-name">' + esc(k.title) + "</span>";
+        html += '<span class="lt-sub-dates">' + md(k.start_date) + " - " + md(k.end_date) + "</span>";
+        html += '<button class="lt-icon-btn" data-act="edit" data-id="' + k.id + '">✎</button>';
+        html += '<button class="lt-icon-btn" data-act="del" data-id="' + k.id + '">🗑</button>';
+        html += "</div>";
+      }
+      html += "</div>";
+    }
+    html += "</div>";
+  }
+  wrap.innerHTML = html;
+}
+
+/* 新建 / 编辑长线任务（母任务与子任务共用一张表单） */
+function openLtModal(parentId, t) {
+  const isChild = !!parentId && !t;
+  const today = localDateStr(new Date());
+  const defEnd = localDateStr(new Date(Date.now() + 26 * 86400000));
+  openModal(
+    "<h3>" + (t ? "编辑" : isChild ? "添加子任务" : "新建长线任务") + "</h3>" +
+    '<label class="modal-label">名称' + (isChild ? "（如：第一章）" : "（如：备考基金从业）") + "</label>" +
+    '<input id="mLtTitle" class="modal-input" maxlength="50" value="' + esc(t ? t.title : "") + '">' +
+    '<label class="modal-label">开始日期</label>' +
+    '<input id="mLtStart" type="date" class="modal-input" value="' + (t ? t.start_date : today) + '">' +
+    '<label class="modal-label">结束日期</label>' +
+    '<input id="mLtEnd" type="date" class="modal-input" value="' + (t ? t.end_date : defEnd) + '">' +
+    '<div class="modal-actions">' +
+    '<button class="btn ghost" data-close="1">取消</button>' +
+    '<button class="btn primary" id="mLtSave">保存</button>' +
+    "</div>"
+  );
+  bind("mLtSave", "click", async () => {
+    const title = $id("mLtTitle").value.trim();
+    const start = $id("mLtStart").value, end = $id("mLtEnd").value;
+    if (!title) { toast("请输入名称", true); return; }
+    if (!start || !end) { toast("请选择开始和结束日期", true); return; }
+    if (end < start) { toast("结束日期不能早于开始日期", true); return; }
+    const payload = { title, start_date: start, end_date: end };
+    let rows;
+    if (t) {
+      rows = await db(cloud.database.from("longterm_tasks").update(payload).eq("id", t.id).select());
+    } else {
+      if (isChild) payload.parent_id = parentId;
+      payload.sort_order = longtermTasks.filter(x => x.parent_id === parentId).length + 1;
+      rows = await db(cloud.database.from("longterm_tasks").insert(payload).select());
+    }
+    if (rows && rows[0]) {
+      const i = longtermTasks.findIndex(x => x.id === rows[0].id);
+      if (i >= 0) longtermTasks[i] = rows[0]; else longtermTasks.push(rows[0]);
+    }
+    closeModal();
+    renderLongterm();
+  });
+  $id("mLtTitle").focus();
+}
+
+/* 长线任务列表的事件委托（列表是 innerHTML 重画的，绑在容器上） */
+const ltListEl = $id("ltList");
+if (ltListEl) {
+  ltListEl.addEventListener("click", async e => {
+    const btn = e.target.closest("[data-act]");
+    if (!btn) return;
+    const t = longtermTasks.find(x => x.id == btn.dataset.id);
+    if (!t) return;
+    const act = btn.dataset.act;
+    if (act === "done") {
+      const rows = await db(cloud.database.from("longterm_tasks").update({ done: !t.done }).eq("id", t.id).select());
+      if (rows && rows[0]) {
+        const i = longtermTasks.findIndex(x => x.id === rows[0].id);
+        if (i >= 0) longtermTasks[i] = rows[0];
+      }
+      renderLongterm();
+    } else if (act === "add") {
+      openLtModal(t.id, null);
+    } else if (act === "edit") {
+      openLtModal(t.parent_id, t);
+    } else if (act === "del") {
+      const n = t.parent_id ? 0 : ltChildren(t.id).length;
+      const ok = await confirmDialog({
+        title: "删除「" + t.title + "」？",
+        desc: n ? "下面挂的 " + n + " 个子任务会一起删除。" : "",
+        okText: "删除",
+      });
+      if (!ok) return;
+      await db(cloud.database.from("longterm_tasks").delete().eq("id", t.id));
+      longtermTasks = longtermTasks.filter(x => x.id !== t.id && x.parent_id !== t.id);
+      renderLongterm();
+    }
+  });
+}
+
+bind("addLtBtn", "click", () => openLtModal(null, null));
+bind("ltPrevBtn", "click", () => { ltView = ltShiftMonth(-1); renderLongterm(); });
+bind("ltNextBtn", "click", () => { ltView = ltShiftMonth(1); renderLongterm(); });
+bind("ltTodayBtn", "click", () => { ltView = null; renderLongterm(); });
+
 /* ============ 启动 ============ */
 function renderAll() {
   renderCards();
   renderStats();
+  renderLongterm();
   renderPointsChip();
   if (!$id("layerView").classList.contains("hidden")) renderLayer();
   if (!$id("tab-layers").classList.contains("hidden")) renderLayers();

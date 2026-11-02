@@ -1300,3 +1300,78 @@ main { max-width: 1100px; margin: 0 auto; padding: 22px 18px 80px; }
   .money-periods { margin-left: 0; width: 100%; }
   .money-periods .mode-btn { flex: 1; text-align: center; }
 }
+
+/* ---------- 归纳统计：左右分栏（左 中短期 / 右 长线） ---------- */
+.stats-split { display: grid; grid-template-columns: 1fr 1fr; gap: 22px; align-items: start; }
+@media (max-width: 1080px) { .stats-split { grid-template-columns: 1fr; } }
+
+/* ---------- 长线任务：手账式月历时间线 ---------- */
+.lt-cal {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+}
+.lt-cal-head { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+.lt-cal-head b { flex: 1; text-align: center; font-size: 14px; }
+
+.lt-cal-grid { display: flex; flex-direction: column; gap: 4px; }
+.lt-row { display: flex; align-items: center; gap: 8px; }
+.lt-name {
+  width: 88px; flex: none;
+  font-size: 12px; font-weight: 600;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.lt-row.sub .lt-name { padding-left: 12px; font-weight: 400; color: var(--text-sub); font-size: 11px; }
+.lt-track { position: relative; flex: 1; min-width: 0; height: 20px; display: flex; gap: 2px; }
+.lt-head-row .lt-track { height: 16px; }
+.lt-day { flex: 1; min-width: 0; border-radius: 3px; background: var(--bg-soft); }
+.lt-day.wknd { background: #1e2942; }
+.lt-day.blank { background: transparent; }
+.lt-day.hd { background: transparent; font-size: 9px; line-height: 14px; text-align: center; color: var(--text-sub); }
+.lt-day.hd.wknd { color: #66788f; }
+.lt-day.hd.today { color: #fff; background: var(--accent); border-radius: 4px; font-weight: 700; }
+.lt-day.today { background: #24365c; }
+
+.lt-bar {
+  position: absolute; top: 3px; height: 14px; z-index: 2;
+  border-radius: 7px; padding: 0 6px;
+  font-size: 10px; line-height: 14px; color: #fff;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, .35);
+}
+.bar-p { background: linear-gradient(90deg, #4f8cff, #7aa5ff); font-weight: 600; }
+.bar-c { background: #33518a; top: 4px; height: 12px; line-height: 12px; font-weight: 400; }
+.bar-done { background: var(--green) !important; opacity: .85; }
+.lt-today-line { position: absolute; top: -3px; bottom: -3px; width: 2px; background: #ffb44f; border-radius: 1px; z-index: 3; }
+.lt-empty { font-size: 12px; color: var(--text-sub); padding: 12px 2px 4px; line-height: 1.7; }
+
+/* 长线任务列表 */
+.lt-list { display: flex; flex-direction: column; gap: 12px; margin-top: 14px; }
+.lt-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+}
+.lt-card.done .lt-title { text-decoration: line-through; color: var(--text-sub); }
+.lt-card-top { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.lt-title { font-size: 15px; font-weight: 700; }
+.lt-dates {
+  font-size: 12px; color: #ffb44f;
+  background: rgba(255, 180, 79, .12);
+  padding: 2px 9px; border-radius: 10px;
+}
+.lt-prog { margin-left: auto; font-size: 12px; color: var(--text-sub); }
+.lt-ops { display: flex; gap: 6px; margin-top: 10px; flex-wrap: wrap; }
+.lt-subs { margin-top: 10px; display: flex; flex-direction: column; gap: 4px; }
+.lt-sub-item {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 12.5px; padding: 5px 8px;
+  border-radius: 8px; background: var(--bg-soft);
+}
+.lt-sub-item.done .lt-sub-name { text-decoration: line-through; color: var(--text-sub); }
+.lt-sub-name { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lt-sub-dates { color: var(--text-sub); font-size: 11px; flex: none; }
+.lt-icon-btn { border: none; background: none; cursor: pointer; color: var(--text-sub); font-size: 13px; padding: 2px 4px; border-radius: 6px; }
+.lt-icon-btn:hover { color: #fff; background: rgba(255, 255, 255, .06); }
