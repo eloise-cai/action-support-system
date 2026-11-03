@@ -1545,3 +1545,11 @@ body.theme-retro {
 .reward-kind-badge.ok { color: var(--green); background: rgba(47, 191, 113, .12); }
 .repay-fill { background: linear-gradient(90deg, #f5a623, #2fbf71); }
 .repay-quick { display: flex; gap: 6px; margin: 8px 0 2px; flex-wrap: wrap; }
+
+/* ---------- 单击编辑：奖励卡名字/积分、储蓄投资卡片 ---------- */
+.reward-title.editable, .reward-cost.editable { cursor: pointer; border-radius: 6px; padding: 1px 4px; margin: 0 -4px; transition: background .12s ease, color .12s ease; }
+.reward-title.editable:hover { background: rgba(255, 255, 255, .07); color: var(--accent); }
+.reward-cost.editable:hover { background: rgba(255, 255, 255, .07); color: var(--accent); }
+.money-save-card { cursor: pointer; transition: border-color .12s ease, transform .12s ease; }
+.money-save-card:hover { border-color: var(--accent); }
+.money-save-card:hover .money-sum-v { color: var(--accent); }

@@ -216,12 +216,15 @@ async function boot() {
 
 /* 用户 ID：首次登录自动生成，之后可自行改成昵称（全局唯一，被占用则改不了） */
 let profileId = null;
+let moneyBase = { save: 0, invest: 0 }; // 储蓄/投资基础金额（记录流水之外的存量，可自行修改）
 async function ensureUserProfile() {
   try {
     const got = await cloud.database.from("user_profiles").select("*").limit(1);
     if (got && got.data && got.data[0]) {
       profileId = got.data[0].id;
       userCode = got.data[0].user_code;
+      moneyBase.save = parseFloat(got.data[0].save_base) || 0;
+      moneyBase.invest = parseFloat(got.data[0].invest_base) || 0;
       if (got.data[0].theme) applyTheme(got.data[0].theme); // 恢复上次用的皮肤
     } else if (got && !got.error) {
       for (let i = 0; i < 5 && !userCode; i++) {
@@ -292,6 +295,7 @@ cloud.auth.onAuthStateChange((event) => {
   if (event === "SIGNED_OUT") {
     tasks = []; subtasks = []; sessions = []; items = []; events = [];
     points = []; rewards = []; goals = []; moneyRecords = []; userCode = null; profileId = null; moneyPeriod = "week"; moneyAnchor = null;
+    moneyBase = { save: 0, invest: 0 };
     longtermTasks = []; checkinItems = []; checkinRecords = [];
     applyTheme("default"); // 退出登录恢复默认主题
     chatMsgs = []; abcRecords = []; abcLoaded = false;
@@ -1993,8 +1997,8 @@ function renderPoints() {
           const bal = pointsBalance();
           return '<div class="reward-card is-advance' + (cleared ? " is-redeemed" : "") + '">' +
             '<button class="reward-del" data-delreward="' + r.id + '" title="删除">✕</button>' +
-            '<div class="reward-top"><span class="reward-title">💳 ' + esc(r.title) + '</span>' +
-            '<span class="reward-cost">' + cost + ' 积分</span></div>' +
+            '<div class="reward-top"><span class="reward-title editable" data-editreward="' + r.id + '" title="单击修改名称和积分">💳 ' + esc(r.title) + '</span>' +
+            '<span class="reward-cost editable" data-editreward="' + r.id + '" title="单击修改名称和积分">' + cost + ' 积分</span></div>' +
             (cleared
               ? '<div class="reward-kind-badge ok">✓ 已还清</div>'
               : '<div class="reward-kind-badge">负债中 · 还差 ' + remain + ' 积分</div>') +
@@ -2013,8 +2017,8 @@ function renderPoints() {
         const can = bal >= cost && !r.redeemed;
         return '<div class="reward-card' + (r.redeemed ? " is-redeemed" : "") + '">' +
           '<button class="reward-del" data-delreward="' + r.id + '" title="删除">✕</button>' +
-          '<div class="reward-top"><span class="reward-title">🎁 ' + esc(r.title) + '</span>' +
-          '<span class="reward-cost">' + cost + ' 积分</span></div>' +
+          '<div class="reward-top"><span class="reward-title editable" data-editreward="' + r.id + '" title="单击修改名称和积分">🎁 ' + esc(r.title) + '</span>' +
+          '<span class="reward-cost editable" data-editreward="' + r.id + '" title="单击修改名称和积分">' + cost + ' 积分</span></div>' +
           (r.note ? '<div class="reward-note">' + esc(r.note) + '</div>' : "") +
           '<div class="progress-bar"><div class="progress-fill" style="width:' + pct + '%"></div></div>' +
           '<div class="reward-foot">' +
@@ -2091,7 +2095,13 @@ bind("rewardsList", "click", async (e) => {
   const del = e.target.closest("[data-delreward]");
   const red = e.target.closest("[data-redeem]");
   const rep = e.target.closest("[data-repay]");
+  const ed = e.target.closest("[data-editreward]");
   try {
+    if (ed) {
+      const r = rewards.find(x => x.id === +ed.dataset.editreward);
+      if (r) openRewardEditModal(r);
+      return;
+    }
     if (del) {
       const id = +del.dataset.delreward;
       const r = rewards.find(x => x.id === id);
@@ -2135,6 +2145,39 @@ bind("rewardsList", "click", async (e) => {
     }
   } catch (err) { /* db() 已提示 */ }
 });
+
+/* 单击奖励卡名字/积分：改名 + 改积分价格（还债进度按新价格重算，已还金额不动） */
+function openRewardEditModal(r) {
+  openModal(
+    "<h3>修改心愿</h3>" +
+    '<label class="modal-label">奖励名称</label>' +
+    '<input id="mRewTitle" class="modal-input" maxlength="50" value="' + esc(r.title) + '">' +
+    '<label class="modal-label">积分价格</label>' +
+    '<input id="mRewCost" class="modal-input" type="number" min="1" step="10" value="' + Math.max(1, r.cost || 1) + '">' +
+    (r.kind === "advance" ? '<p style="color:var(--text-sub);font-size:12.5px;margin-top:-6px">改价不影响已还金额（已还 ' + (r.repaid || 0) + " 积分），还债进度按新价格重算。</p>" : "") +
+    '<div class="modal-actions">' +
+    '<button class="btn ghost" data-close="1">取消</button>' +
+    '<button class="btn primary" id="mRewSave">保存</button>' +
+    "</div>"
+  );
+  const titleInput = $id("mRewTitle");
+  titleInput.focus();
+  titleInput.select();
+  const save = async () => {
+    const title = titleInput.value.trim();
+    const cost = Math.max(1, parseInt($id("mRewCost").value, 10) || 0);
+    if (!title) { toast("请输入奖励名称", true); return; }
+    if (!cost) { toast("请输入积分价格", true); return; }
+    if (title === r.title && cost === r.cost) { closeModal(); return; }
+    const rows = await db(cloud.database.from("rewards").update({ title, cost }).eq("id", r.id).select());
+    if (rows && rows[0]) Object.assign(r, rows[0]);
+    closeModal();
+    renderPoints();
+    toast("已修改心愿：" + title + " · " + cost + " 积分");
+  };
+  bind("mRewSave", "click", save);
+  [titleInput, $id("mRewCost")].forEach(inp => inp.addEventListener("keydown", e => { if (e.key === "Enter" && !e.isComposing && e.keyCode !== 229) save(); }));
+}
 
 /* 超前兑换还款：像信用卡还款，每次自己定还多少（不能超过剩余负债和当前余额） */
 function openRepayModal(r) {
@@ -2347,8 +2390,8 @@ function renderMoney() {
   const netEl = $id("weekNet");
   if (netEl) { netEl.textContent = (net >= 0 ? "+" : "−") + fmtYuan(Math.abs(net)); netEl.style.color = net >= 0 ? "var(--green)" : "var(--red)"; }
 
-  /* 储蓄与投资：累计 + 本期转入 */
-  let totalSave = 0, totalInvest = 0;
+  /* 储蓄与投资：基础存量 + 累计转入 */
+  let totalSave = moneyBase.save, totalInvest = moneyBase.invest;
   for (const r of moneyRecords) {
     if (r.kind === "save") totalSave += parseFloat(r.amount) || 0;
     else if (r.kind === "invest") totalInvest += parseFloat(r.amount) || 0;
@@ -2428,6 +2471,48 @@ function renderMoney() {
 bind("prevPeriodBtn", "click", () => shiftMoney(-1));
 bind("nextPeriodBtn", "click", () => shiftMoney(1));
 bind("thisPeriodBtn", "click", () => { moneyAnchor = null; renderMoney(); });
+
+/* 单击储蓄/投资卡片：直接修改现有金额（差额存为个人基础存量，流水不动） */
+function openMoneyBaseEdit(kind) {
+  const isSave = kind === "save";
+  const sum = isSave
+    ? moneyRecords.reduce((a, r) => a + (r.kind === "save" ? parseFloat(r.amount) || 0 : 0), moneyBase.save)
+    : moneyRecords.reduce((a, r) => a + (r.kind === "invest" ? parseFloat(r.amount) || 0 : 0), moneyBase.invest);
+  const name = isSave ? "储蓄" : "投资";
+  openModal(
+    "<h3>修改现有" + name + "</h3>" +
+    '<p style="color:var(--text-sub);font-size:13px;margin-top:-8px;margin-bottom:10px">直接输入你现在实际持有的金额；应用里的转入流水不会被动，差额会作为你的初始存量保存。</p>' +
+    '<label class="modal-label">现有' + name + '金额（元）</label>' +
+    '<input id="mMoneyBase" class="modal-input" type="number" min="0" step="0.01" value="' + (Math.round(sum * 100) / 100) + '">' +
+    '<div class="modal-actions">' +
+    '<button class="btn ghost" data-close="1">取消</button>' +
+    '<button class="btn primary" id="mMoneyBaseSave">保存</button>' +
+    "</div>"
+  );
+  const input = $id("mMoneyBase");
+  input.focus();
+  input.select();
+  const save = async () => {
+    const v = parseFloat(input.value);
+    if (isNaN(v) || v < 0) { toast("请输入不小于 0 的金额", true); return; }
+    if (!profileId) { toast("账号信息未就绪，请稍后再试", true); return; }
+    const flowSum = moneyRecords.reduce((a, r) => a + ((isSave ? r.kind === "save" : r.kind === "invest") ? parseFloat(r.amount) || 0 : 0), 0);
+    const base = Math.max(0, Math.round((v - flowSum) * 100) / 100);
+    const res = await db(cloud.database.from("user_profiles").update(isSave ? { save_base: base } : { invest_base: base }).eq("id", profileId).select());
+    if (res && res[0]) {
+      if (isSave) moneyBase.save = parseFloat(res[0].save_base) || base;
+      else moneyBase.invest = parseFloat(res[0].invest_base) || base;
+    } else if (isSave) moneyBase.save = base;
+    else moneyBase.invest = base;
+    closeModal();
+    renderMoney();
+    toast("现有" + name + "已更新：" + fmtYuan(isSave ? moneyBase.save + flowSum : moneyBase.invest + flowSum));
+  };
+  bind("mMoneyBaseSave", "click", save);
+  input.addEventListener("keydown", e => { if (e.key === "Enter" && !e.isComposing && e.keyCode !== 229) save(); });
+}
+bind("editSaveCard", "click", () => openMoneyBaseEdit("save"));
+bind("editInvestCard", "click", () => openMoneyBaseEdit("invest"));
 bind("tab-money", "click", (e) => {
   const b = e.target.closest(".money-periods .mode-btn");
   if (!b || b.dataset.period === moneyPeriod) return;
