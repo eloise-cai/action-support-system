@@ -1974,9 +1974,41 @@ function renderPoints() {
     if (!rewards.length) {
       list.innerHTML = '<div class="stats-empty">还没有心愿奖励。<br>想一件平时舍不得买的小东西（一杯手冲、一场电影、一副耳机），点右上角「＋ 添加奖励」给它定个积分价格 🎁</div>';
     } else {
-      const sorted = rewards.slice().sort((a, b) => (a.redeemed === b.redeemed) ? (a.cost - b.cost) : (a.redeemed ? 1 : -1));
+      /* 排序：负债中的超前兑换在最前 → 未兑换普通奖励（价格低优先）→ 已了结的 */
+      const sorted = rewards.slice().sort((a, b) => {
+        const ra = a.redeemed ? 1 : 0, rb = b.redeemed ? 1 : 0;
+        if (ra !== rb) return ra - rb;
+        const da = a.kind === "advance" ? 0 : 1, dbk = b.kind === "advance" ? 0 : 1;
+        if (da !== dbk) return da - dbk;
+        return a.cost - b.cost;
+      });
       list.innerHTML = sorted.map(r => {
         const cost = Math.max(1, r.cost || 1);
+        if (r.kind === "advance") {
+          /* 超前兑换：先享受后还债，像信用卡分期，每次自己定还多少 */
+          const repaid = r.repaid || 0;
+          const remain = Math.max(0, cost - repaid);
+          const pct = Math.min(100, Math.round(repaid / cost * 100));
+          const cleared = remain <= 0 || !!r.redeemed;
+          const bal = pointsBalance();
+          return '<div class="reward-card is-advance' + (cleared ? " is-redeemed" : "") + '">' +
+            '<button class="reward-del" data-delreward="' + r.id + '" title="删除">✕</button>' +
+            '<div class="reward-top"><span class="reward-title">💳 ' + esc(r.title) + '</span>' +
+            '<span class="reward-cost">' + cost + ' 积分</span></div>' +
+            (cleared
+              ? '<div class="reward-kind-badge ok">✓ 已还清</div>'
+              : '<div class="reward-kind-badge">负债中 · 还差 ' + remain + ' 积分</div>') +
+            (r.note ? '<div class="reward-note">' + esc(r.note) + '</div>' : "") +
+            '<div class="progress-bar"><div class="progress-fill repay-fill" style="width:' + pct + '%"></div></div>' +
+            '<div class="reward-foot">' +
+            (cleared
+              ? '<span class="reward-done">✓ 已还清' + (r.redeemed_at ? " · " + String(r.redeemed_at).slice(0, 10) : "") + " 🎉</span>"
+              : '<span class="reward-need">已还 ' + repaid + " / " + cost + "</span>" +
+                (bal > 0
+                  ? '<button class="btn primary small" data-repay="' + r.id + '">💳 还款</button>'
+                  : '<span class="reward-need">余额不足，先去赚积分</span>')) +
+            "</div></div>";
+        }
         const pct = Math.min(100, Math.round(bal / cost * 100));
         const can = bal >= cost && !r.redeemed;
         return '<div class="reward-card' + (r.redeemed ? " is-redeemed" : "") + '">' +
@@ -2011,11 +2043,17 @@ function renderPoints() {
 }
 
 bind("addRewardBtn", "click", () => {
+  let rewardKind = "normal";
   openModal(
     "<h3>添加心愿奖励</h3>" +
-    '<label class="modal-label">奖励名称（平时舍不得买的那件东西）</label>' +
-    '<input id="mRewardTitle" class="modal-input" maxlength="50" placeholder="例：一副降噪耳机 / 一杯手冲 / 一场电影">' +
-    '<label class="modal-label">需要多少积分兑换</label>' +
+    '<label class="modal-label">奖励类型</label>' +
+    '<div class="kind-picker" id="mRewardKind">' +
+    '<button type="button" class="kind-opt active" data-kind="normal">🎯 普通奖励 <small>攒够再买</small></button>' +
+    '<button type="button" class="kind-opt" data-kind="advance">💳 超前兑换 <small>先享受，分期还给自己</small></button>' +
+    "</div>" +
+    '<label class="modal-label">奖励名称</label>' +
+    '<input id="mRewardTitle" class="modal-input" maxlength="50" placeholder="例：一副降噪耳机 / 一杯手冲 / 音乐剧门票">' +
+    '<label class="modal-label" id="mRewardCostLabel">需要多少积分兑换</label>' +
     '<input id="mRewardCost" class="modal-input" type="number" min="1" step="10" value="200">' +
     '<label class="modal-label">备注（可选，提醒自己为什么值得）</label>' +
     '<input id="mRewardNote" class="modal-input" maxlength="80" placeholder="例：专注满 20 小时后买，奖励自己">' +
@@ -2026,16 +2064,24 @@ bind("addRewardBtn", "click", () => {
   );
   const input = $id("mRewardTitle");
   input.focus();
+  document.querySelectorAll("#mRewardKind .kind-opt").forEach(b => {
+    b.addEventListener("click", () => {
+      document.querySelectorAll("#mRewardKind .kind-opt").forEach(x => x.classList.remove("active"));
+      b.classList.add("active");
+      rewardKind = b.dataset.kind;
+      $id("mRewardCostLabel").textContent = rewardKind === "advance" ? "总价（已享受的部分折算成多少积分，之后分期还）" : "需要多少积分兑换";
+    });
+  });
   const save = async () => {
     const title = input.value.trim();
     const cost = Math.max(1, parseInt($id("mRewardCost").value, 10) || 100);
     const note = $id("mRewardNote").value.trim();
     if (!title) { toast("请输入奖励名称", true); return; }
-    const rows = await db(cloud.database.from("rewards").insert({ title, cost, note }).select());
+    const rows = await db(cloud.database.from("rewards").insert({ title, cost, note, kind: rewardKind }).select());
     if (rows && rows[0]) rewards.push(rows[0]);
     closeModal();
     renderPoints();
-    toast("已添加心愿：🎁 " + title);
+    toast(rewardKind === "advance" ? "已记录超前兑换：💳 " + title + "，慢慢还给自己" : "已添加心愿：🎁 " + title);
   };
   bind("mRewardSave", "click", save);
   input.addEventListener("keydown", e => { if (e.key === "Enter" && !e.isComposing && e.keyCode !== 229) save(); });
@@ -2044,13 +2090,16 @@ bind("addRewardBtn", "click", () => {
 bind("rewardsList", "click", async (e) => {
   const del = e.target.closest("[data-delreward]");
   const red = e.target.closest("[data-redeem]");
+  const rep = e.target.closest("[data-repay]");
   try {
     if (del) {
       const id = +del.dataset.delreward;
       const r = rewards.find(x => x.id === id);
+      const debtLeft = r && r.kind === "advance" && !r.redeemed ? Math.max(0, (r.cost || 0) - (r.repaid || 0)) : 0;
       const ok = await confirmDialog({
         title: "删除心愿",
-        desc: "「" + esc(r ? r.title : "") + "」将被移除（已获得的积分不受影响）。",
+        desc: "「" + esc(r ? r.title : "") + "」将被移除（已获得的积分不受影响）。" +
+          (debtLeft > 0 ? "<br>注意：这笔还有 <b>" + debtLeft + "</b> 积分没还，删除等于原谅自己这笔债。" : ""),
         okText: "删除",
       });
       if (ok) {
@@ -2058,6 +2107,12 @@ bind("rewardsList", "click", async (e) => {
         rewards = rewards.filter(x => x.id !== id);
         renderPoints();
       }
+      return;
+    }
+    if (rep) {
+      const r = rewards.find(x => x.id === +rep.dataset.repay);
+      if (!r || r.kind !== "advance") return;
+      openRepayModal(r);
       return;
     }
     if (red) {
@@ -2080,6 +2135,57 @@ bind("rewardsList", "click", async (e) => {
     }
   } catch (err) { /* db() 已提示 */ }
 });
+
+/* 超前兑换还款：像信用卡还款，每次自己定还多少（不能超过剩余负债和当前余额） */
+function openRepayModal(r) {
+  const cost = Math.max(1, r.cost || 1);
+  const repaid = r.repaid || 0;
+  const remain = Math.max(0, cost - repaid);
+  const bal = pointsBalance();
+  openModal(
+    "<h3>💳 还债 · " + esc(r.title) + "</h3>" +
+    '<p style="color:var(--text-sub);font-size:13px;margin:-6px 0 10px">已还 <b style="color:var(--text)">' + repaid + "</b> / " + cost +
+    ' 积分 · 还差 <b style="color:var(--orange)">' + remain + "</b> · 当前余额 <b style=\"color:var(--text)\">" + bal + "</b></p>" +
+    '<label class="modal-label">这次还多少积分（还给自己，量力而行）</label>' +
+    '<input id="mRepayAmt" class="modal-input" type="number" min="1" max="' + Math.min(remain, bal) + '" placeholder="例：50">' +
+    '<div class="repay-quick">' +
+    [20, 50, 100, 200].filter(v => v <= Math.min(remain, bal)).map(v => '<button type="button" class="btn ghost small" data-repayquick="' + v + '">' + v + "</button>").join("") +
+    "</div>" +
+    '<div class="modal-actions">' +
+    '<button class="btn ghost" data-close="1">取消</button>' +
+    '<button class="btn primary" id="mRepaySave">确认还款</button>' +
+    "</div>"
+  );
+  const input = $id("mRepayAmt");
+  input.focus();
+  document.querySelectorAll("[data-repayquick]").forEach(b => {
+    b.addEventListener("click", () => { input.value = b.dataset.repayquick; });
+  });
+  const save = async () => {
+    const amt = parseInt(input.value, 10);
+    if (!amt || amt < 1) { toast("请输入还款积分", true); return; }
+    if (amt > remain) { toast("超出剩余负债了（还差 " + remain + "）", true); return; }
+    if (amt > pointsBalance()) { toast("余额不够，先去赚积分", true); return; }
+    await awardPoints(-amt, "还债：" + r.title, "reward", r.id);
+    const newRepaid = Math.min(cost, repaid + amt);
+    const cleared = newRepaid >= cost;
+    const rows = await db(cloud.database.from("rewards").update(
+      cleared ? { repaid: newRepaid, redeemed: true, redeemed_at: new Date().toISOString() } : { repaid: newRepaid }
+    ).eq("id", r.id).select());
+    if (rows && rows[0]) Object.assign(r, rows[0]);
+    closeModal();
+    renderPoints();
+    if (cleared) {
+      celebrate();
+      sayCompanion("恭喜你！变得更棒啦！");
+      toast("🎉 「" + r.title + "」已还清！这份快乐现在完完全全是你的了");
+    } else {
+      toast("还款 " + amt + " 积分 · 还差 " + (cost - newRepaid));
+    }
+  };
+  bind("mRepaySave", "click", save);
+  input.addEventListener("keydown", e => { if (e.key === "Enter" && !e.isComposing && e.keyCode !== 229) save(); });
+}
 
 /* ============ 徽章墙（按周期点亮，下个周期没做到自动熄灭） ============ */
 const BADGES = [
