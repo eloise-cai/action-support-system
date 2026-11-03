@@ -16,7 +16,7 @@ const LEVELS = {
   low: { label: "较低优先", color: "#8ab4ff", bg: "#26374f", border: "rgba(79,140,255,.45)" },
 };
 
-/* 任务分类（带图标） */
+/* 任务分类（内置 + 用户自定义，自定义存 user_profiles.custom_categories JSON） */
 const CATEGORIES = {
   work: { label: "工作", icon: "💼" },
   study: { label: "学习", icon: "📚" },
@@ -24,8 +24,14 @@ const CATEGORIES = {
   hobby: { label: "爱好娱乐", icon: "🎮" },
   fitness: { label: "健身", icon: "🏋️" },
 };
+let customCats = []; // 用户自定义分类 [{ key, label, icon }]
+function catMap() {
+  const m = Object.assign({}, CATEGORIES);
+  for (const c of customCats) m[c.key] = { label: c.label, icon: c.icon || "📁", custom: true };
+  return m;
+}
 function catOf(task) {
-  return (task && CATEGORIES[task.category]) || { label: "未分类", icon: "📁" };
+  return catMap()[task && task.category] || { label: "未分类", icon: "📁" };
 }
 
 /* ============ 全局状态 ============ */
@@ -225,6 +231,7 @@ async function ensureUserProfile() {
       userCode = got.data[0].user_code;
       moneyBase.save = parseFloat(got.data[0].save_base) || 0;
       moneyBase.invest = parseFloat(got.data[0].invest_base) || 0;
+      try { customCats = JSON.parse(got.data[0].custom_categories || "[]") || []; } catch (e) { customCats = []; }
       if (got.data[0].theme) applyTheme(got.data[0].theme); // 恢复上次用的皮肤
     } else if (got && !got.error) {
       for (let i = 0; i < 5 && !userCode; i++) {
@@ -296,6 +303,7 @@ cloud.auth.onAuthStateChange((event) => {
     tasks = []; subtasks = []; sessions = []; items = []; events = [];
     points = []; rewards = []; goals = []; moneyRecords = []; userCode = null; profileId = null; moneyPeriod = "week"; moneyAnchor = null;
     moneyBase = { save: 0, invest: 0 };
+    customCats = [];
     longtermTasks = []; checkinItems = []; checkinRecords = [];
     applyTheme("default"); // 退出登录恢复默认主题
     chatMsgs = []; abcRecords = []; abcLoaded = false;
@@ -1863,7 +1871,7 @@ function renderStats() {
   const catCount = {};
   tasks.forEach(t => { const k = t.category || "none"; catCount[k] = (catCount[k] || 0) + 1; });
   const catLine = Object.keys(catCount).map(k => {
-    const c = CATEGORIES[k] || { icon: "📁", label: "未分类" };
+    const c = catMap()[k] || { icon: "📁", label: "未分类" };
     return c.icon + " " + c.label + " " + catCount[k];
   }).join("　");
   let html = '<div class="stat-row" style="border-left:3px solid var(--accent)">' +
@@ -3587,27 +3595,69 @@ function bindLevelPicker(initial) {
   return () => level;
 }
 
-/* 分类选择器（新建 / 修改任务共用） */
+/* 分类选择器（新建 / 修改任务共用，末尾带「＋ 自定义」） */
+function catOptionsHtml(sel) {
+  const m = catMap();
+  return Object.keys(m).map(k => {
+    const c = m[k];
+    return '<button class="cat-opt' + (k === sel ? " sel" : "") + '" data-cat="' + k + '">' +
+      '<span class="cat-ic">' + c.icon + "</span>" + esc(c.label) + "</button>";
+  }).join("") +
+    '<button class="cat-opt cat-add" id="mCatAdd" title="添加自定义分类">＋ 自定义</button>';
+}
 function categoryPickerHtml(sel) {
-  return '<div class="cat-picker" id="mCatPick">' +
-    Object.keys(CATEGORIES).map(k => {
-      const c = CATEGORIES[k];
-      return '<button class="cat-opt' + (k === sel ? " sel" : "") + '" data-cat="' + k + '">' +
-        '<span class="cat-ic">' + c.icon + "</span>" + c.label + "</button>";
-    }).join("") + "</div>";
+  return '<div class="cat-picker" id="mCatPick">' + catOptionsHtml(sel) + "</div>";
 }
 function bindCategoryPicker(initial) {
   let cat = initial || "";
   const pick = $id("mCatPick");
   if (!pick) return () => cat;
   pick.addEventListener("click", e => {
+    if (e.target.closest("#mCatAdd")) { renderCatAddForm(pick, { get: () => cat, set: v => { cat = v; } }); return; }
+    if (e.target.closest("#mCatCancel")) { pick.innerHTML = catOptionsHtml(cat); return; }
     const b = e.target.closest(".cat-opt");
-    if (!b) return;
+    if (!b || b.id === "mCatAdd") return;
     cat = b.dataset.cat;
     pick.querySelectorAll(".cat-opt").forEach(x => x.classList.remove("sel"));
     b.classList.add("sel");
   });
   return () => cat;
+}
+
+/* 自定义分类：在选择器内联展开一个小表单（不开新弹窗，避免顶掉任务表单），保存到账号并自动选中 */
+function renderCatAddForm(pick, ref) {
+  const selBtn = pick.querySelector(".cat-opt.sel");
+  const selKey = (selBtn && selBtn.dataset.cat) || (ref && ref.get ? ref.get() : "");
+  pick.innerHTML = catOptionsHtml(selKey) +
+    '<div class="cat-inline" id="mCatInline">' +
+    '<input id="mCatIcon" maxlength="4" value="📁" title="图标（一个 emoji）">' +
+    '<input id="mCatName" maxlength="8" placeholder="分类名，如：实习">' +
+    '<button type="button" class="btn primary small" id="mCatOk" title="保存">✓</button>' +
+    '<button type="button" class="btn ghost small" id="mCatCancel" title="取消">✕</button>' +
+    "</div>";
+  const nameInput = $id("mCatName");
+  nameInput.focus();
+  const save = async () => {
+    const label = nameInput.value.trim();
+    const icon = ($id("mCatIcon").value.trim() || "📁").slice(0, 4);
+    if (!label) { toast("请输入分类名称", true); return; }
+    if (Object.values(catMap()).some(c => c.label === label)) { toast("已有同名分类", true); return; }
+    const key = "c" + Date.now();
+    const next = customCats.concat([{ key, label, icon }]);
+    let saved = next;
+    if (profileId) {
+      const res = await db(cloud.database.from("user_profiles").update({ custom_categories: JSON.stringify(next) }).eq("id", profileId).select());
+      if (res && res[0]) {
+        try { saved = JSON.parse(res[0].custom_categories || "[]") || next; } catch (e) { /* 保存失败就用本地值 */ }
+      }
+    }
+    customCats = saved;
+    if (ref && ref.set) ref.set(key);
+    pick.innerHTML = catOptionsHtml(key);
+    toast("已添加分类：" + icon + " " + label);
+  };
+  $id("mCatOk").addEventListener("click", save);
+  [nameInput, $id("mCatIcon")].forEach(inp => inp.addEventListener("keydown", e => { if (e.key === "Enter" && !e.isComposing && e.keyCode !== 229) { e.preventDefault(); save(); } }));
 }
 
 /* 写入结果判定：只有明确返回空数组才说明被 RLS 拦下 / 行不存在 */
