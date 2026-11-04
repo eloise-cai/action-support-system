@@ -4395,12 +4395,9 @@ function ygChildren(pid) {
 function renderGoals() {
   if (!$id("ygYearCal")) return; // 旧缓存 HTML：元素不存在时静默跳过
   renderYgCal();
+  renderYgGantt();
   renderYgList();
 }
-
-const YG_CELL = 18;   // 小月格单行高度（px），须与 CSS --yg-cell 一致
-const YG_LANE = 8;    // 同一格内多条横条的层距（px）
-const YG_LANES = 3;   // 最多层数，超出则共用最后一层
 
 function renderYgCal() {
   const y = ygView || new Date().getFullYear();
@@ -4423,47 +4420,72 @@ function renderYgCal() {
     html += '<div class="yg-grid-wrap"><div class="yg-days">';
     for (let i = 0; i < firstDow; i++) html += '<span class="yg-day blank"></span>';
     for (let d = 1; d <= dim; d++) {
-      const isToday = monthPre + String(d).padStart(2, "0") === today;
-      html += '<span class="yg-day' + (isToday ? " today" : "") + '">' + d + "</span>";
-    }
-    html += "</div>";
-
-    /* 横条层：把该月内有效的目标/子目标按周切成小段铺在日格上 */
-    const active = rows
-      .map(r => ({ r, span: ltSpan(r.t, y, m) }))
-      .filter(x => x.span)
-      .sort((a, b) => (a.r.t.start_date < b.r.t.start_date ? -1 : 1));
-    const laneEnd = [];
-    html += '<div class="yg-overlay">';
-    for (const { r, span } of active) {
-      const [d1, d2] = span;
-      let lane = laneEnd.findIndex(end => end < r.t.start_date);
-      if (lane < 0) {
-        lane = Math.min(laneEnd.length, YG_LANES - 1);
-        laneEnd[lane] = r.t.end_date;
-      } else {
-        laneEnd[lane] = r.t.end_date;
+      const dateStr = monthPre + String(d).padStart(2, "0");
+      const isToday = dateStr === today;
+      /* 热力染色：当天有多少目标在进行（全完成染绿），不再叠横条 */
+      const cov = rows.filter(r => r.t.start_date <= dateStr && r.t.end_date >= dateStr);
+      let cls = "yg-day";
+      if (isToday) cls += " today";
+      if (cov.length) {
+        if (cov.every(r => r.t.done)) cls += " cov-done";
+        else cls += cov.length >= 2 ? " cov2" : " cov";
       }
-      const cls = "yg-bar " + (r.isParent ? "bar-p" : "bar-c") + (r.t.done ? " bar-done" : "");
-      let d = d1;
-      while (d <= d2) {
-        const rowIdx = Math.floor((firstDow + d - 1) / 7);
-        const colStart = (firstDow + d - 1) % 7;
-        const rowLast = d + (6 - colStart);
-        const segEnd = Math.min(d2, rowLast);
-        const left = colStart / 7 * 100;
-        const width = (segEnd - d + 1) / 7 * 100;
-        const top = rowIdx * YG_CELL + YG_CELL - 7 - lane * YG_LANE;
-        html += '<span class="' + cls + '" data-yg="' + r.t.id + '" title="' + esc(r.t.title) +
-          " " + md(r.t.start_date) + " - " + md(r.t.end_date) +
-          '" style="left:' + left.toFixed(2) + "%;width:" + width.toFixed(2) + "%;top:" + top + 'px"></span>';
-        d = segEnd + 1;
-      }
+      const tip = cov.length ? ' title="' + esc(cov.map(r => r.t.title).join("；")) + '"' : "";
+      html += '<span class="' + cls + '"' + tip + ">" + d + "</span>";
     }
     html += "</div></div></div>";
   }
-  $id("ygYearCal").innerHTML = html ||
-    '<div class="lt-empty">年历加载中…</div>';
+  $id("ygYearCal").innerHTML = html || '<div class="lt-empty">年历加载中…</div>';
+}
+
+/* 年度时间线：每行一个目标，横条连续跨越月份，不再按月切碎 */
+function renderYgGantt() {
+  const wrap = $id("ygGantt");
+  if (!wrap) return;
+  const y = ygView || new Date().getFullYear();
+  const isThisYear = y === new Date().getFullYear();
+  const today = localDateStr(new Date());
+  const leap = (y % 4 === 0 && y % 100 !== 0) || y % 400 === 0;
+  const diy = leap ? 366 : 365;
+  const doy = dateStr => {
+    const d = ymd(dateStr);
+    if (!d) return null;
+    if (d.slice(0, 4) !== String(y)) return d.slice(0, 4) < String(y) ? 1 : diy; // 跨年目标夹到本年
+    return Math.round((new Date(y, parseInt(d.slice(5, 7), 10) - 1, parseInt(d.slice(8, 10), 10)) - new Date(y, 0, 1)) / 864e5) + 1;
+  };
+
+  const rows = [];
+  for (const p of ygParents()) {
+    rows.push({ t: p, isParent: true });
+    for (const c of ygChildren(p.id)) rows.push({ t: c, isParent: false });
+  }
+  let html = '<div class="yg-row"><div class="yg-name"></div><div class="yg-track">';
+  for (let m = 0; m < 12; m++) html += '<span class="yg-mcell mlabel">' + (m + 1) + "月</span>";
+  html += "</div></div>";
+
+  if (!rows.length) {
+    html += '<div class="lt-empty">还没有年度目标，在手账里添加后，这里会出现连续的时间横条。</div>';
+  }
+  for (const r of rows) {
+    const t = r.t;
+    const s = doy(t.start_date), e = doy(t.end_date);
+    html += '<div class="yg-row' + (r.isParent ? "" : " sub") + (t.done ? " rowdone" : "") + '">';
+    html += '<div class="yg-name" title="' + esc(t.title) + '">' + esc(t.title) + "</div>";
+    html += '<div class="yg-track">';
+    for (let m = 0; m < 12; m++) html += '<span class="yg-mcell"></span>';
+    if (s !== null && e !== null && t.end_date >= y + "-01-01" && t.start_date <= y + "-12-31") {
+      const left = (s - 1) / diy * 100, w = (e - s + 1) / diy * 100;
+      const cls = "yg-gbar " + (r.isParent ? "bar-p" : "bar-c") + (t.done ? " bar-done" : "");
+      html += '<span class="' + cls + '" data-yg="' + t.id + '" title="' + esc(t.title) + " " + md(t.start_date) + " - " + md(t.end_date) +
+        '" style="left:' + left.toFixed(2) + "%;width:" + w.toFixed(2) + '%">' + (w >= 11 ? esc(t.title) : "") + "</span>";
+    }
+    if (isThisYear) {
+      const td = doy(today);
+      html += '<span class="yg-today-line" style="left:' + ((td - 0.5) / diy * 100).toFixed(2) + '%"></span>';
+    }
+    html += "</div></div>";
+  }
+  wrap.innerHTML = html;
 }
 
 function renderYgList() {
@@ -4590,10 +4612,10 @@ if (ygListEl) {
   });
 }
 
-/* 点年历横条直接编辑 */
-const ygCalEl = $id("ygYearCal");
-if (ygCalEl) {
-  ygCalEl.addEventListener("click", e => {
+/* 点年度时间线横条直接编辑 */
+const ygGanttEl = $id("ygGantt");
+if (ygGanttEl) {
+  ygGanttEl.addEventListener("click", e => {
     const bar = e.target.closest("[data-yg]");
     if (!bar) return;
     const t = yearGoals.find(x => x.id == bar.dataset.yg);

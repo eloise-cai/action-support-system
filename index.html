@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>行动支持系统</title>
-<link rel="stylesheet" href="styles.css?v=20261104a">
+<link rel="stylesheet" href="styles.css?v=20261104b">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🍅</text></svg>">
 </head>
 <body>
@@ -172,7 +172,11 @@
         <button id="ygTodayBtn" class="btn ghost small">今年</button>
       </div>
       <div id="ygYearCal" class="yg-year"></div>
-      <p class="yg-hint">横条＝时间线：<b style="color:#7aa5ff">蓝＝目标</b> · 浅蓝＝子目标 · <b style="color:var(--green)">绿＝已完成</b>；单击横条可直接编辑，本月格子有蓝色边框。</p>
+      <p class="yg-hint">日格染色＝当天有目标进行中：<b style="color:#7aa5ff">浅蓝＝1 个</b> · 深蓝＝多个并行 · <b style="color:var(--green)">绿＝当天全部完成</b>；鼠标悬停可看名单。</p>
+      <div class="yg-gantt card">
+        <div class="yg-gantt-head"><b>🎯 年度时间线</b><span class="yg-gantt-sub">横条连续跨越月份，单击可编辑，橙色竖线＝今天</span></div>
+        <div id="ygGantt" class="yg-gantt-grid"></div>
+      </div>
       <div id="ygList" class="lt-list"></div>
     </section>
 
@@ -401,6 +405,6 @@
 <div id="toast" class="toast hidden"></div>
 
 <script src="https://cdn.jsdelivr.net/npm/@tencent-ai/workbuddy-cloud-sdk@dev/lib/index.global.js"></script>
-<script src="app.js?v=20261104a"></script>
+<script src="app.js?v=20261104b"></script>
 </body>
 </html>
