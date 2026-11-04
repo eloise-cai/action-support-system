@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>行动支持系统</title>
-<link rel="stylesheet" href="styles.css?v=20261103b">
+<link rel="stylesheet" href="styles.css?v=20261103c">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🍅</text></svg>">
 </head>
 <body>
@@ -232,8 +232,13 @@
         <div class="money-sum-card net"><div class="money-sum-t" id="sumNetT">本周结余</div><div class="money-sum-v" id="weekNet">¥0.00</div></div>
       </div>
       <div class="money-save-row">
-        <div class="money-save-card save" id="editSaveCard" title="单击修改现有储蓄金额"><div class="money-sum-t">🏦 现有储蓄</div><div class="money-sum-v" id="totalSave">¥0.00</div><div class="money-save-sub" id="periodSave">本期转入 ¥0.00</div></div>
-        <div class="money-save-card invest" id="editInvestCard" title="单击修改现有投资金额"><div class="money-sum-t">📈 现有投资</div><div class="money-sum-v" id="totalInvest">¥0.00</div><div class="money-save-sub" id="periodInvest">本期转入 ¥0.00</div></div>
+        <div class="money-save-card save" id="editSaveCard" title="单击查看细分项目并修改现有储蓄金额"><div class="money-sum-t">🏦 现有储蓄</div><div class="money-sum-v" id="totalSave">¥0.00</div><div class="money-save-sub" id="periodSave">本期转入 ¥0.00</div></div>
+        <div class="money-save-card invest" id="editInvestCard" title="单击查看细分项目并修改现有投资金额"><div class="money-sum-t">📈 现有投资</div><div class="money-sum-v" id="totalInvest">¥0.00</div><div class="money-save-sub" id="periodInvest">本期转入 ¥0.00</div></div>
+      </div>
+      <div class="net-worth-bar">
+        <span class="net-worth-t">💠 当前净资产合计</span>
+        <span class="net-worth-v" id="netWorthVal">¥0.00</span>
+        <span class="net-worth-sub" id="netWorthSub">🏦 ¥0.00 ＋ 📈 ¥0.00</span>
       </div>
       <div class="money-chart-wrap">
         <div id="moneyChart" class="money-chart"></div>
@@ -364,6 +369,6 @@
 <div id="toast" class="toast hidden"></div>
 
 <script src="https://cdn.jsdelivr.net/npm/@tencent-ai/workbuddy-cloud-sdk@dev/lib/index.global.js"></script>
-<script src="app.js?v=20261103b"></script>
+<script src="app.js?v=20261103c"></script>
 </body>
 </html>

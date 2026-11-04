@@ -225,6 +225,7 @@ async function boot() {
 /* 用户 ID：首次登录自动生成，之后可自行改成昵称（全局唯一，被占用则改不了） */
 let profileId = null;
 let moneyBase = { save: 0, invest: 0 }; // 储蓄/投资基础金额（记录流水之外的存量，可自行修改）
+let moneyBreakdown = { save: [], invest: [] }; // 储蓄/投资的细分项目 [{ name, amount }]（环形图用）
 async function ensureUserProfile() {
   try {
     const got = await cloud.database.from("user_profiles").select("*").limit(1);
@@ -233,6 +234,8 @@ async function ensureUserProfile() {
       userCode = got.data[0].user_code;
       moneyBase.save = parseFloat(got.data[0].save_base) || 0;
       moneyBase.invest = parseFloat(got.data[0].invest_base) || 0;
+      try { moneyBreakdown.save = JSON.parse(got.data[0].save_items || "[]") || []; } catch (e) { moneyBreakdown.save = []; }
+      try { moneyBreakdown.invest = JSON.parse(got.data[0].invest_items || "[]") || []; } catch (e) { moneyBreakdown.invest = []; }
       try { customCats = JSON.parse(got.data[0].custom_categories || "[]") || []; } catch (e) { customCats = []; }
       if (got.data[0].theme) applyTheme(got.data[0].theme); // 恢复上次用的皮肤
     } else if (got && !got.error) {
@@ -305,6 +308,7 @@ cloud.auth.onAuthStateChange((event) => {
     tasks = []; subtasks = []; sessions = []; items = []; events = [];
     points = []; rewards = []; goals = []; moneyRecords = []; userCode = null; profileId = null; moneyPeriod = "week"; moneyAnchor = null;
     moneyBase = { save: 0, invest: 0 };
+    moneyBreakdown = { save: [], invest: [] };
     customCats = [];
     archivedTasks = [];
     longtermTasks = []; checkinItems = []; checkinRecords = [];
@@ -2462,6 +2466,9 @@ function renderMoney() {
   if ($id("totalInvest")) $id("totalInvest").textContent = fmtYuan(totalInvest);
   if ($id("periodSave")) $id("periodSave").textContent = unit + "转入 " + fmtYuan(sv);
   if ($id("periodInvest")) $id("periodInvest").textContent = unit + "转入 " + fmtYuan(iv);
+  /* 当前净资产合计 = 现有储蓄 + 现有投资 */
+  if ($id("netWorthVal")) $id("netWorthVal").textContent = fmtYuan(totalSave + totalInvest);
+  if ($id("netWorthSub")) $id("netWorthSub").textContent = "🏦 " + fmtYuan(totalSave) + " ＋ 📈 " + fmtYuan(totalInvest);
 
   /* 柱状图（按支出高度） */
   const todayStr = localDateStr(new Date());
@@ -2534,47 +2541,137 @@ bind("prevPeriodBtn", "click", () => shiftMoney(-1));
 bind("nextPeriodBtn", "click", () => shiftMoney(1));
 bind("thisPeriodBtn", "click", () => { moneyAnchor = null; renderMoney(); });
 
-/* 单击储蓄/投资卡片：直接修改现有金额（差额存为个人基础存量，流水不动） */
-function openMoneyBaseEdit(kind) {
+/* 单击储蓄/投资卡片：改现有金额 + 划分细分项目（自定义名字和金额，带环形占比图） */
+const BD_COLORS = ["#2fbf71", "#4f8cff", "#ffc76b", "#ff8f93", "#b07cff", "#4dd0e1", "#ff9f6b", "#9ccc65", "#e57373", "#7986cb"];
+function openMoneyDetail(kind) {
   const isSave = kind === "save";
+  const name = isSave ? "储蓄" : "投资";
   const sum = isSave
     ? moneyRecords.reduce((a, r) => a + (r.kind === "save" ? parseFloat(r.amount) || 0 : 0), moneyBase.save)
     : moneyRecords.reduce((a, r) => a + (r.kind === "invest" ? parseFloat(r.amount) || 0 : 0), moneyBase.invest);
-  const name = isSave ? "储蓄" : "投资";
+  const items = (moneyBreakdown[kind] || []).slice();
   openModal(
-    "<h3>修改现有" + name + "</h3>" +
-    '<p style="color:var(--text-sub);font-size:13px;margin-top:-8px;margin-bottom:10px">直接输入你现在实际持有的金额；应用里的转入流水不会被动，差额会作为你的初始存量保存。</p>' +
-    '<label class="modal-label">现有' + name + '金额（元）</label>' +
+    "<h3>" + (isSave ? "🏦" : "📈") + " 现有" + name + " · " + fmtYuan(sum) + "</h3>" +
+    '<p style="color:var(--text-sub);font-size:13px;margin:-6px 0 10px">直接输入你现在实际持有的金额；也可以把它划分成细分项目（比如应急备用金、指数基金），环形图会实时显示占比。流水不会被动。</p>' +
+    '<label class="modal-label">现有' + name + '总金额（元）</label>' +
     '<input id="mMoneyBase" class="modal-input" type="number" min="0" step="0.01" value="' + (Math.round(sum * 100) / 100) + '">' +
+    '<label class="modal-label" style="margin-top:12px">细分项目（可选，自定义名字和金额）</label>' +
+    '<div id="mBDList" class="bd-list"></div>' +
+    '<button id="mBDAdd" class="btn ghost small bd-add">＋ 添加细分项目</button>' +
+    '<div class="bd-flex">' +
+    '<div id="mBDChart" class="bd-donut"></div>' +
+    '<div id="mBDLegend" class="bd-legend"></div>' +
+    "</div>" +
     '<div class="modal-actions">' +
     '<button class="btn ghost" data-close="1">取消</button>' +
     '<button class="btn primary" id="mMoneyBaseSave">保存</button>' +
     "</div>"
   );
-  const input = $id("mMoneyBase");
-  input.focus();
-  input.select();
+  const listEl = $id("mBDList");
+  const bdRow = it =>
+    '<div class="bd-row">' +
+    '<span class="bd-dot" style="background:' + BD_COLORS[0] + '"></span>' +
+    '<input class="bd-name" placeholder="项目名（如：应急备用金）" maxlength="20" value="' + esc(it.name || "") + '">' +
+    '<input class="bd-amt" type="number" min="0" step="0.01" placeholder="金额" value="' + (it.amount != null ? it.amount : "") + '">' +
+    '<button class="bd-del" title="删除该细分">✕</button>' +
+    "</div>";
+  listEl.innerHTML = items.map(bdRow).join("") || "";
+  if (!listEl.children.length) listEl.innerHTML = '<div class="bd-empty">还没有细分项目，点下方按钮加一个</div>';
+
+  const collectRows = () => Array.from(listEl.querySelectorAll(".bd-row")).map(row => ({
+    name: row.querySelector(".bd-name").value.trim(),
+    amount: parseFloat(row.querySelector(".bd-amt").value) || 0,
+  }));
+
+  /* 环形图：stroke-dasharray 逐段画圆，中心显示总金额，图例列出各项目占比 */
+  const renderChart = () => {
+    const total = parseFloat($id("mMoneyBase").value) || 0;
+    const rows = collectRows().filter(r => r.name && r.amount > 0);
+    const allocated = rows.reduce((a, r) => a + r.amount, 0);
+    const C = 2 * Math.PI * 54;
+    let offset = 0;
+    let segs = "";
+    rows.forEach((r, i) => {
+      const frac = allocated > 0 ? r.amount / allocated : 0;
+      const len = frac * C;
+      segs += '<circle cx="70" cy="70" r="54" fill="none" stroke="' + BD_COLORS[i % BD_COLORS.length] +
+        '" stroke-width="17" stroke-dasharray="' + Math.max(0, len - 1.5) + " " + (C - Math.max(0, len - 1.5)) +
+        '" stroke-dashoffset="' + (-offset) + '"></circle>';
+      offset += len;
+    });
+    $id("mBDChart").innerHTML =
+      '<svg viewBox="0 0 140 140" width="128" height="128">' +
+      '<circle cx="70" cy="70" r="54" fill="none" stroke="rgba(255,255,255,.08)" stroke-width="17"></circle>' +
+      '<g transform="rotate(-90 70 70)">' + segs + "</g>" +
+      '<text x="70" y="65" text-anchor="middle" font-size="9.5" fill="rgba(255,255,255,.55)">净持有</text>' +
+      '<text x="70" y="81" text-anchor="middle" font-size="13" font-weight="700" fill="#fff">' + (total >= 10000 ? (Math.round(total / 100) / 100) + "万" : Math.round(total)) + "</text>" +
+      "</svg>";
+    const unalloc = Math.round((total - allocated) * 100) / 100;
+    $id("mBDLegend").innerHTML =
+      (rows.length
+        ? rows.map((r, i) => {
+            const pct = allocated > 0 ? Math.round(r.amount / allocated * 100) : 0;
+            return '<div class="bd-leg"><span class="bd-dot" style="background:' + BD_COLORS[i % BD_COLORS.length] + '"></span>' +
+              '<span class="bd-leg-name">' + esc(r.name) + "</span>" +
+              '<span class="bd-leg-val">' + fmtYuan(r.amount) + " · " + pct + "%</span></div>";
+          }).join("")
+        : '<div class="bd-leg"><span class="bd-leg-name" style="color:var(--text-sub)">添加细分项目后，这里显示各项占比</span></div>') +
+      '<div class="bd-leg bd-unalloc' + (unalloc < 0 ? " over" : "") + '"><span class="bd-leg-name">未分配</span>' +
+      '<span class="bd-leg-val">' + (unalloc >= 0 ? fmtYuan(unalloc) : "超出 " + fmtYuan(-unalloc)) + "</span></div>";
+  };
+
+  const syncDots = () => Array.from(listEl.querySelectorAll(".bd-row")).forEach((row, i) => {
+    row.querySelector(".bd-dot").style.background = BD_COLORS[i % BD_COLORS.length];
+  });
+
+  $id("mBDAdd").addEventListener("click", () => {
+    const empty = listEl.querySelector(".bd-empty");
+    if (empty) empty.remove();
+    listEl.insertAdjacentHTML("beforeend", bdRow({}));
+    syncDots();
+    const row = listEl.lastElementChild;
+    row.querySelector(".bd-name").focus();
+    renderChart();
+  });
+  listEl.addEventListener("click", e => {
+    const del = e.target.closest(".bd-del");
+    if (!del) return;
+    del.closest(".bd-row").remove();
+    if (!listEl.querySelector(".bd-row")) listEl.innerHTML = '<div class="bd-empty">还没有细分项目，点下方按钮加一个</div>';
+    syncDots();
+    renderChart();
+  });
+  listEl.addEventListener("input", renderChart);
+  $id("mMoneyBase").addEventListener("input", renderChart);
+  syncDots();
+  renderChart();
+
   const save = async () => {
-    const v = parseFloat(input.value);
+    const v = parseFloat($id("mMoneyBase").value);
     if (isNaN(v) || v < 0) { toast("请输入不小于 0 的金额", true); return; }
     if (!profileId) { toast("账号信息未就绪，请稍后再试", true); return; }
     const flowSum = moneyRecords.reduce((a, r) => a + ((isSave ? r.kind === "save" : r.kind === "invest") ? parseFloat(r.amount) || 0 : 0), 0);
     const base = Math.max(0, Math.round((v - flowSum) * 100) / 100);
-    const res = await db(cloud.database.from("user_profiles").update(isSave ? { save_base: base } : { invest_base: base }).eq("id", profileId).select());
+    const itemsOut = collectRows().filter(r => r.name && r.amount > 0);
+    const patch = isSave
+      ? { save_base: base, save_items: JSON.stringify(itemsOut) }
+      : { invest_base: base, invest_items: JSON.stringify(itemsOut) };
+    const res = await db(cloud.database.from("user_profiles").update(patch).eq("id", profileId).select());
     if (res && res[0]) {
-      if (isSave) moneyBase.save = parseFloat(res[0].save_base) || base;
-      else moneyBase.invest = parseFloat(res[0].invest_base) || base;
+      moneyBase.save = parseFloat(res[0].save_base) || (isSave ? base : moneyBase.save);
+      moneyBase.invest = parseFloat(res[0].invest_base) || (isSave ? moneyBase.invest : base);
     } else if (isSave) moneyBase.save = base;
     else moneyBase.invest = base;
+    moneyBreakdown[kind] = itemsOut;
     closeModal();
     renderMoney();
-    toast("现有" + name + "已更新：" + fmtYuan(isSave ? moneyBase.save + flowSum : moneyBase.invest + flowSum));
+    toast("现有" + name + "已更新：" + fmtYuan(v) + (itemsOut.length ? " · " + itemsOut.length + " 个细分项目" : ""));
   };
   bind("mMoneyBaseSave", "click", save);
-  input.addEventListener("keydown", e => { if (e.key === "Enter" && !e.isComposing && e.keyCode !== 229) save(); });
+  $id("mMoneyBase").addEventListener("keydown", e => { if (e.key === "Enter" && !e.isComposing && e.keyCode !== 229) save(); });
 }
-bind("editSaveCard", "click", () => openMoneyBaseEdit("save"));
-bind("editInvestCard", "click", () => openMoneyBaseEdit("invest"));
+bind("editSaveCard", "click", () => openMoneyDetail("save"));
+bind("editInvestCard", "click", () => openMoneyDetail("invest"));
 bind("tab-money", "click", (e) => {
   const b = e.target.closest(".money-periods .mode-btn");
   if (!b || b.dataset.period === moneyPeriod) return;
