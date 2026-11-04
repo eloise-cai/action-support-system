@@ -1005,9 +1005,12 @@ main { max-width: 1100px; margin: 0 auto; padding: 22px 18px 80px; }
 
 /* 收支页顶部：左栏（收入/支出/结余 + 储蓄/投资 + 净资产）｜右栏（支出拆解环形图） */
 .money-top { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 12px; align-items: stretch; margin-bottom: 14px; }
-.money-top-left { min-width: 0; display: flex; flex-direction: column; gap: 12px; }
-/* 三行等分填满左右同高：每行 flex:1，卡内内容垂直居中，左右上下边缘严格对齐 */
-.money-top-left > * { flex: 1 1 0; margin-bottom: 0; }
+/* 左栏三行用 grid 等分（1fr×3）：行高严格一致、缝隙 8px、上下边缘与右栏齐平；
+   margin-bottom 必须在此处清零（基础规则声明在其后，同优先级会覆盖回来） */
+.money-top-left { min-width: 0; display: grid; grid-template-rows: 1fr 1fr 1fr; gap: 8px; }
+.money-top-left > .money-summary,
+.money-top-left > .money-save-row,
+.money-top-left > .net-worth-bar { margin-bottom: 0; }
 .money-top-left .money-sum-card,
 .money-top-left .money-save-card { display: flex; flex-direction: column; justify-content: center; }
 .money-top-left .money-summary { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
@@ -1026,7 +1029,7 @@ main { max-width: 1100px; margin: 0 auto; padding: 22px 18px 80px; }
 .exp-legend { display: flex; flex-direction: column; gap: 6px; overflow-y: auto; max-height: 180px; }
 @media (max-width: 1120px) {
   .money-top { grid-template-columns: 1fr; }
-  .money-top-left > * { flex: 0 0 auto; }
+  .money-top-left { grid-template-rows: none; }
   .exp-legend { max-height: none; }
 }
 .money-sum-card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px 14px; }
