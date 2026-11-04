@@ -427,6 +427,7 @@ function renderCards() {
       '<div class="task-head">' +
       '<span class="cat-badge" title="' + cat.label + '">' + cat.icon + '</span>' +
       '<span class="task-title task-title-edit" data-renametask="' + t.id + '" title="点击修改任务名称">' + esc(t.title) + '</span>' +
+      (allDone ? '<button class="task-settle" data-settle="' + t.id + '" title="纳入已沉淀任务">📦</button>' : "") +
       '<button class="task-layer" data-layer="' + t.id + '" title="进入分层页">›</button>' +
       '<button class="task-del" data-deltask="' + t.id + '" title="删除任务">✕</button>' +
       '</div>' +
@@ -450,6 +451,29 @@ bind("cardsGrid", "click", async (e) => {
   const rstBtn = e.target.closest("[data-restore]");
   if (rstBtn) {
     await restoreTask(+rstBtn.dataset.restore);
+    return;
+  }
+  const delSt = e.target.closest("[data-delsettled]");
+  if (delSt) {
+    const id = +delSt.dataset.delsettled;
+    if (delSt.dataset.armed !== "1") {
+      delSt.dataset.armed = "1";
+      delSt.classList.add("armed");
+      delSt.textContent = "确认删除？";
+      setTimeout(() => {
+        if (!document.body.contains(delSt)) return;
+        delSt.dataset.armed = "";
+        delSt.classList.remove("armed");
+        delSt.textContent = "🗑";
+      }, 3000);
+      return;
+    }
+    await hardDeleteTask(id);
+    return;
+  }
+  const settleBtn = e.target.closest("[data-settle]");
+  if (settleBtn) {
+    await offerSettle(+settleBtn.dataset.settle);
     return;
   }
   const layerBtn = e.target.closest("[data-layer]");
@@ -511,13 +535,7 @@ bind("cardsGrid", "click", async (e) => {
         celebrate();
         sayCompanion("恭喜你！变得更棒啦！");
         const subs = taskSubs(s.task_id);
-        if (subs.length && subs.every(x => x.done)) {
-          const settledNow = await maybeAutoSettle(s.task_id);
-          if (!settledNow) {
-            const t = tasks.find(x => x.id === s.task_id);
-            toast("🎉 「" + (t ? t.title : "") + "」全部子任务完成，卡片已变绿！");
-          }
-        }
+        if (subs.length && subs.every(x => x.done)) await offerSettle(s.task_id);
       }
       return;
     }
@@ -1365,7 +1383,7 @@ function openSubtaskModal(sub, autoStart, skipRitual) {
     if (nd) {
       celebrate(); sayCompanion("恭喜你！变得更棒啦！"); toast("子任务已完成 ✓");
       const subs2 = taskSubs(sub.task_id);
-      if (subs2.length && subs2.every(x => x.done)) await maybeAutoSettle(sub.task_id);
+      if (subs2.length && subs2.every(x => x.done)) await offerSettle(sub.task_id);
     }
   });
 }
@@ -3885,10 +3903,11 @@ function renameSubtask(sub) {
   bind("mRenSubSave", "click", save);
   input.addEventListener("keydown", e => { if (e.key === "Enter" && !e.isComposing && e.keyCode !== 229) save(); });
 }
-/* ============ 自动沉淀 ============
-   任务的所有子任务都完成时，自动「沉淀」：出列表 / 分层 / 统计，
-   月历打卡、专注记录、积分全部保留；可在任务列表底部的「已沉淀」区恢复。 */
-async function maybeAutoSettle(taskId) {
+/* ============ 沉淀：用户自主选择 ============
+   任务的所有子任务都完成时，卡片整框变绿，并弹窗询问用户是否
+   「纳入已沉淀任务」；同意才沉淀：出列表 / 分层 / 统计，
+   月历打卡、专注记录、积分全部保留；可在任务列表底部的「已沉淀」区恢复或删除。 */
+async function settleTask(taskId) {
   const t = tasks.find(x => x.id === taskId);
   if (!t || archivedTaskIds.has(taskId)) return false;
   const subs = taskSubs(taskId);
@@ -3909,16 +3928,69 @@ async function maybeAutoSettle(taskId) {
   }
   renderAll();
   celebrate();
-  sayCompanion("整个任务都完成啦！已经为你沉淀好 📦");
-  toast("🎉 「" + t.title + "」全部完成，已自动沉淀（月历与积分保留，可在任务列表底部找回）");
+  toast("📦 「" + t.title + "」已纳入沉淀（月历与积分保留，可在任务列表底部找回）");
   return true;
+}
+
+async function offerSettle(taskId) {
+  const t = tasks.find(x => x.id === taskId);
+  if (!t || archivedTaskIds.has(taskId)) return;
+  const subs = taskSubs(taskId);
+  if (!subs.length || !subs.every(s => s.done)) return;
+  const ok = await confirmDialog({
+    title: "🎉 「" + t.title + "」全部完成！",
+    desc: "要把这个任务纳入已沉淀任务吗？沉淀后会移出列表和统计，但月历打卡、专注时长、积分都保留，随时可以恢复。",
+    okText: "📦 纳入已沉淀"
+  });
+  if (ok) {
+    const done = await settleTask(taskId);
+    if (done) sayCompanion("整个任务都完成啦！已经为你沉淀好 📦");
+  } else {
+    toast("已保留在列表，卡片变绿啦 ✓；想沉淀时点卡片右上角的 📦 即可");
+  }
 }
 
 async function restoreTask(id) {
   const upd = await db(cloud.database.from("tasks").update({ archived: false }).eq("id", id).select());
   if (blocked(upd)) { toast("恢复失败：这条数据可能不属于当前账号，请重新登录后再试", true); return; }
-  toast("任务已恢复，正在刷新…");
+  toast("任务已恢复");
   await loadAll();
+  renderAll(); // loadAll 只刷新数据不重绘，必须补一次渲染卡片才会回来
+}
+
+/* 已沉淀任务的真实删除：任务、子任务、子子任务、专注记录一并清除；
+   已获得的积分保留（那是用户实打实赚到的）。二次确认防误删。 */
+async function hardDeleteTask(id) {
+  const t = archivedTasks.find(x => x.id === id);
+  if (!t) return;
+  const ok = await confirmDialog({
+    title: "彻底删除「" + t.title + "」？",
+    desc: "将从数据库中彻底删除该任务：子任务、子子任务、专注记录都会一并清除，且不可恢复。已获得的积分仍然保留。",
+    okText: "彻底删除"
+  });
+  if (!ok) return;
+  try {
+    await db(cloud.database.from("pomodoro_sessions").delete().eq("task_id", id).select());
+    const subRows = allSubtasks.filter(x => x.task_id === id);
+    for (const s of subRows) {
+      try { await db(cloud.database.from("subtask_items").delete().eq("subtask_id", s.id).select()); } catch (e) {}
+      try { await db(cloud.database.from("subtasks").delete().eq("id", s.id).select()); } catch (e) {}
+    }
+    const rows = await db(cloud.database.from("tasks").delete().eq("id", id).select());
+    if (blocked(rows)) { toast("删除失败：这条数据可能不属于当前账号，请重新登录后再试", true); return; }
+  } catch (e) {
+    toast("删除失败，请稍后重试", true);
+    return;
+  }
+  archivedTasks = archivedTasks.filter(x => x.id !== id);
+  archivedTaskIds.delete(id);
+  allSubtasks = allSubtasks.filter(x => x.task_id !== id);
+  for (const g of goals.filter(x => x.link_task_id === id)) {
+    try { await db(cloud.database.from("monthly_goals").update({ link_task_id: null }).eq("id", g.id).select()); } catch (e) {}
+    g.link_task_id = null;
+  }
+  renderAll();
+  toast("已彻底删除「" + t.title + "」，积分保留");
 }
 
 function settledSectionHtml() {
@@ -3927,12 +3999,13 @@ function settledSectionHtml() {
     const cat = catOf(t);
     return '<div class="settled-row"><span class="cat-badge" title="' + cat.label + '">' + cat.icon + "</span>" +
       '<span class="settled-name">' + esc(t.title) + "</span>" +
-      '<button class="btn ghost small" data-restore="' + t.id + '">恢复</button></div>';
+      '<button class="btn ghost small" data-restore="' + t.id + '">恢复</button>' +
+      '<button class="settled-del" data-delsettled="' + t.id + '" title="彻底删除该任务">🗑</button></div>';
   }).join("");
   return '<div class="settled-sec">' +
     '<button id="settledToggle" class="settled-toggle">📦 已沉淀任务（' + archivedTasks.length + "）</button>" +
     '<div id="settledList" class="settled-list hidden">' + rows +
-    '<p class="settled-hint">沉淀的任务不占列表和统计，但月历打卡、专注时长、积分都还在；点「恢复」可以拿回来继续用。</p></div></div>';
+    '<p class="settled-hint">沉淀的任务不占列表和统计，但月历打卡、专注时长、积分都还在；点「恢复」可以拿回来继续用，点「🗑」二次确认后彻底删除。</p></div></div>';
 }
 
 bind("modalOverlay", "click", (e) => {
