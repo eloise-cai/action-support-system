@@ -2466,9 +2466,11 @@ function renderMoney() {
   if ($id("totalInvest")) $id("totalInvest").textContent = fmtYuan(totalInvest);
   if ($id("periodSave")) $id("periodSave").textContent = unit + "转入 " + fmtYuan(sv);
   if ($id("periodInvest")) $id("periodInvest").textContent = unit + "转入 " + fmtYuan(iv);
-  /* 当前净资产合计 = 现有储蓄 + 现有投资 */
-  if ($id("netWorthVal")) $id("netWorthVal").textContent = fmtYuan(totalSave + totalInvest);
-  if ($id("netWorthSub")) $id("netWorthSub").textContent = "🏦 " + fmtYuan(totalSave) + " ＋ 📈 " + fmtYuan(totalInvest);
+  /* 当前净资产合计 = 储蓄 + 投资 + 当期收入 − 当期开支（当期 = 当前所选周/月/年） */
+  if ($id("netWorthVal")) $id("netWorthVal").textContent = fmtYuan(totalSave + totalInvest + inc - exp);
+  if ($id("netWorthSub")) $id("netWorthSub").textContent =
+    "🏦 " + fmtYuan(totalSave) + " ＋ 📈 " + fmtYuan(totalInvest) +
+    " ＋ 💰 收入 " + fmtYuan(inc) + " − 🛒 开支 " + fmtYuan(exp);
 
   /* 柱状图（按支出高度） */
   const todayStr = localDateStr(new Date());
