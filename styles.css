@@ -1570,3 +1570,44 @@ body.theme-retro {
 }
 .cat-inline #mCatIcon { width: 52px; text-align: center; flex: none; }
 .cat-inline #mCatName { flex: 1; }
+
+/* ---------- 自动沉淀：已沉淀任务区 ---------- */
+.settled-sec { margin-top: 14px; }
+.settled-toggle {
+  width: 100%; text-align: left; background: transparent; color: var(--text-sub);
+  border: 1px dashed var(--border); border-radius: 10px; padding: 9px 12px;
+  font-size: 13px; cursor: pointer;
+}
+.settled-toggle:hover { color: var(--text); border-color: var(--accent); }
+.settled-list { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+.settled-row {
+  display: flex; align-items: center; gap: 8px;
+  background: var(--card); border: 1px solid var(--border); border-radius: 10px;
+  padding: 8px 12px; opacity: .85;
+}
+.settled-name { flex: 1; font-size: 13.5px; color: var(--text-sub); }
+.settled-hint { font-size: 12px; color: var(--text-sub); margin: 6px 2px 0; }
+
+/* ---------- 主任务执行计划（分层页顶部） ---------- */
+.task-plan {
+  background: var(--card); border: 1px solid var(--border); border-radius: 12px;
+  padding: 10px 14px; margin-bottom: 12px;
+}
+.task-plan summary { cursor: pointer; font-size: 13.5px; font-weight: 600; color: var(--text); }
+.task-plan textarea {
+  width: 100%; min-height: 72px; margin-top: 10px; resize: vertical;
+  background: var(--bg-soft); border: 1px solid var(--border); border-radius: 8px;
+  color: var(--text); font-size: 13.5px; padding: 9px 11px; line-height: 1.6;
+}
+
+/* ---------- 自定义分类：管理列表 ---------- */
+.cat-manage { display: flex; flex-direction: column; gap: 6px; width: 100%; }
+.cat-mrow { display: flex; gap: 6px; align-items: center; }
+.cat-mrow .cm-ic { width: 52px; flex: none; text-align: center; }
+.cat-mrow .cm-name { flex: 1; min-width: 0; }
+.cat-manage input {
+  background: var(--bg-soft); border: 1px solid var(--border); border-radius: 8px;
+  color: var(--text); font-size: 13px; padding: 6px 9px; min-width: 0;
+}
+.cm-hint { font-size: 12px; color: var(--text-sub); margin: 0 0 4px; }
+.cm-del.armed { color: var(--red); border-color: var(--red); font-weight: 700; }

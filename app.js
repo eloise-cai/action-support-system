@@ -40,7 +40,8 @@ let subtasks = [];
 let sessions = [];
 let items = []; // 第三层：子任务下的子项
 let allSubtasks = []; // 含「已归档任务」下的子任务：月历打卡要认它们
-let archivedTaskIds = new Set(); // 已删除的已完成任务：出列表 / 分层 / 统计，但记录留在库里
+let archivedTaskIds = new Set(); // 已沉淀（归档）的任务：出列表 / 分层 / 统计，但记录留在库里
+let archivedTasks = []; // 已沉淀任务的完整行（供「已沉淀」区展示与恢复）
 let points = []; // 积分流水
 let rewards = []; // 心愿奖励
 let goals = []; // 月目标
@@ -189,6 +190,7 @@ async function loadAll() {
   }
   const rawTasks = t.data || [];
   archivedTaskIds = new Set(rawTasks.filter(x => x.archived).map(x => x.id));
+  archivedTasks = rawTasks.filter(x => x.archived);
   tasks = rawTasks.filter(x => !x.archived);          // 列表 / 分层 / 统计只看活跃任务
   allSubtasks = s.data || [];
   subtasks = allSubtasks.filter(x => !archivedTaskIds.has(x.task_id));
@@ -304,6 +306,7 @@ cloud.auth.onAuthStateChange((event) => {
     points = []; rewards = []; goals = []; moneyRecords = []; userCode = null; profileId = null; moneyPeriod = "week"; moneyAnchor = null;
     moneyBase = { save: 0, invest: 0 };
     customCats = [];
+    archivedTasks = [];
     longtermTasks = []; checkinItems = []; checkinRecords = [];
     applyTheme("default"); // 退出登录恢复默认主题
     chatMsgs = []; abcRecords = []; abcLoaded = false;
@@ -391,7 +394,7 @@ function renderCards() {
   if (mT) mT.classList.toggle("active", cardsMode === "today");
   if (mA) mA.classList.toggle("active", cardsMode === "all");
   if (!tasks.length) {
-    grid.innerHTML = '<div class="cards-empty">还没有任务，点右上角「新建任务」或用上方「一句话记事」开始吧 🍅</div>';
+    grid.innerHTML = '<div class="cards-empty">还没有任务，点右上角「新建任务」或用上方「一句话记事」开始吧 🍅</div>' + settledSectionHtml();
     return;
   }
   if (cardsMode === "today") {
@@ -433,11 +436,22 @@ function renderCards() {
       '<input placeholder="添加子任务，回车确认" data-addsub="' + t.id + '">' +
       '<button data-addsubbtn="' + t.id + '">＋</button>' +
       '</div></div>';
-  }).join("");
+  }).join("") + settledSectionHtml();
 }
 
 // 卡片区事件委托（任务级 + 今日三件事卡片 + 子任务级共用一条链，避免重复弹窗）
 bind("cardsGrid", "click", async (e) => {
+  const settledBtn = e.target.closest("#settledToggle");
+  if (settledBtn) {
+    const l = $id("settledList");
+    if (l) l.classList.toggle("hidden");
+    return;
+  }
+  const rstBtn = e.target.closest("[data-restore]");
+  if (rstBtn) {
+    await restoreTask(+rstBtn.dataset.restore);
+    return;
+  }
   const layerBtn = e.target.closest("[data-layer]");
   const renTask = e.target.closest("[data-renametask]");
   const delTask = e.target.closest("[data-deltask]");
@@ -498,8 +512,11 @@ bind("cardsGrid", "click", async (e) => {
         sayCompanion("恭喜你！变得更棒啦！");
         const subs = taskSubs(s.task_id);
         if (subs.length && subs.every(x => x.done)) {
-          const t = tasks.find(x => x.id === s.task_id);
-          toast("🎉 「" + (t ? t.title : "") + "」全部子任务完成，卡片已变绿！");
+          const settledNow = await maybeAutoSettle(s.task_id);
+          if (!settledNow) {
+            const t = tasks.find(x => x.id === s.task_id);
+            toast("🎉 「" + (t ? t.title : "") + "」全部子任务完成，卡片已变绿！");
+          }
         }
       }
       return;
@@ -686,6 +703,21 @@ function renderLayer() {
   const task = tasks.find(t => t.id === currentTaskId);
   if (!task) { exitLayer(); return; }
   $id("layerTitle").textContent = task.title;
+  /* 主任务的执行计划（子任务有，主任务也该有）：默认有内容就展开 */
+  const planWrap = $id("layerPlanWrap");
+  if (planWrap) {
+    planWrap.innerHTML = '<details class="task-plan"' + (task.plan ? " open" : "") + ">" +
+      '<summary>📋 执行计划 / 要点</summary>' +
+      '<textarea id="layerPlanText" placeholder="写下这个任务的整体计划、要点或备注…">' + esc(task.plan || "") + "</textarea>" +
+      '<button class="btn ghost small" id="layerPlanSave" style="margin-top:6px">保存计划</button>' +
+      "</details>";
+    bind("layerPlanSave", "click", async () => {
+      const plan = $id("layerPlanText").value;
+      const rows = await db(cloud.database.from("tasks").update({ plan }).eq("id", task.id).select());
+      if (rows && rows[0]) Object.assign(task, rows[0]);
+      toast("计划已保存");
+    });
+  }
   const grid = $id("layerGrid");
   const subs = taskSubs(task.id);
   if (!subs.length) {
@@ -1330,7 +1362,11 @@ function openSubtaskModal(sub, autoStart, skipRitual) {
     closeModal();
     renderAll();
     await awardOnSubtaskToggle(sub, wasDone, wasAllDone);
-    if (nd) { celebrate(); sayCompanion("恭喜你！变得更棒啦！"); toast("子任务已完成 ✓"); }
+    if (nd) {
+      celebrate(); sayCompanion("恭喜你！变得更棒啦！"); toast("子任务已完成 ✓");
+      const subs2 = taskSubs(sub.task_id);
+      if (subs2.length && subs2.every(x => x.done)) await maybeAutoSettle(sub.task_id);
+    }
   });
 }
 
@@ -3595,7 +3631,7 @@ function bindLevelPicker(initial) {
   return () => level;
 }
 
-/* 分类选择器（新建 / 修改任务共用，末尾带「＋ 自定义」） */
+/* 分类选择器（新建 / 修改任务共用，末尾带「＋ 自定义」和「⚙ 管理」） */
 function catOptionsHtml(sel) {
   const m = catMap();
   return Object.keys(m).map(k => {
@@ -3603,7 +3639,8 @@ function catOptionsHtml(sel) {
     return '<button class="cat-opt' + (k === sel ? " sel" : "") + '" data-cat="' + k + '">' +
       '<span class="cat-ic">' + c.icon + "</span>" + esc(c.label) + "</button>";
   }).join("") +
-    '<button class="cat-opt cat-add" id="mCatAdd" title="添加自定义分类">＋ 自定义</button>';
+    '<button class="cat-opt cat-add" id="mCatAdd" title="添加自定义分类">＋ 自定义</button>' +
+    (customCats.length ? '<button class="cat-opt cat-add" id="mCatManage" title="修改或删除自定义分类">⚙ 管理</button>' : "");
 }
 function categoryPickerHtml(sel) {
   return '<div class="cat-picker" id="mCatPick">' + catOptionsHtml(sel) + "</div>";
@@ -3612,16 +3649,73 @@ function bindCategoryPicker(initial) {
   let cat = initial || "";
   const pick = $id("mCatPick");
   if (!pick) return () => cat;
-  pick.addEventListener("click", e => {
-    if (e.target.closest("#mCatAdd")) { renderCatAddForm(pick, { get: () => cat, set: v => { cat = v; } }); return; }
-    if (e.target.closest("#mCatCancel")) { pick.innerHTML = catOptionsHtml(cat); return; }
+  const ref = { get: () => cat, set: v => { cat = v; } };
+  pick.addEventListener("click", async e => {
+    if (e.target.closest("#mCatAdd")) { renderCatAddForm(pick, ref); return; }
+    if (e.target.closest("#mCatManage")) { renderCatManage(pick, ref); return; }
+    if (e.target.closest("#mCatBack") || e.target.closest("#mCatCancel")) { pick.innerHTML = catOptionsHtml(ref.get()); return; }
+    const sv = e.target.closest("[data-catsave]");
+    if (sv) {
+      const row = sv.closest(".cat-mrow");
+      if (!row) return;
+      const icon = (row.querySelector(".cm-ic").value.trim() || "📁").slice(0, 4);
+      const label = row.querySelector(".cm-name").value.trim();
+      if (!label) { toast("名称不能为空", true); return; }
+      if (customCats.some(c => c.key !== sv.dataset.catsave && c.label === label) ||
+          Object.values(CATEGORIES).some(c => c.label === label)) { toast("已有同名分类", true); return; }
+      await persistCustomCats(customCats.map(c => c.key === sv.dataset.catsave ? { ...c, label, icon } : c));
+      renderCatManage(pick, ref);
+      toast("分类已更新：" + icon + " " + label);
+      return;
+    }
+    const dl = e.target.closest("[data-catdel]");
+    if (dl) {
+      if (!dl.classList.contains("armed")) {
+        dl.classList.add("armed");
+        dl.textContent = "确认?";
+        setTimeout(() => { dl.classList.remove("armed"); dl.textContent = "🗑"; }, 3000);
+        return;
+      }
+      await persistCustomCats(customCats.filter(c => c.key !== dl.dataset.catdel));
+      renderCatManage(pick, ref);
+      toast("分类已删除（用到它的任务显示为「未分类」，数据不受影响）");
+      return;
+    }
     const b = e.target.closest(".cat-opt");
-    if (!b || b.id === "mCatAdd") return;
+    if (!b || b.id === "mCatAdd" || b.id === "mCatManage") return;
     cat = b.dataset.cat;
     pick.querySelectorAll(".cat-opt").forEach(x => x.classList.remove("sel"));
     b.classList.add("sel");
   });
   return () => cat;
+}
+
+/* 自定义分类统一持久化 */
+async function persistCustomCats(next) {
+  let saved = next;
+  if (profileId) {
+    const res = await db(cloud.database.from("user_profiles").update({ custom_categories: JSON.stringify(next) }).eq("id", profileId).select());
+    if (res && res[0]) {
+      try { saved = JSON.parse(res[0].custom_categories || "[]") || next; } catch (e) { /* 保存失败就用本地值 */ }
+    }
+  }
+  customCats = saved;
+  return saved;
+}
+
+/* 分类管理：内联列表，改名称/图标 + 删除（两步确认），不开新弹窗避免顶掉任务表单 */
+function renderCatManage(pick, ref) {
+  const rows = customCats.map(c =>
+    '<div class="cat-mrow" data-k="' + c.key + '">' +
+    '<input class="cm-ic" maxlength="4" value="' + esc(c.icon || "📁") + '" title="图标（一个 emoji）">' +
+    '<input class="cm-name" maxlength="8" value="' + esc(c.label) + '" title="分类名称">' +
+    '<button type="button" class="btn primary small" data-catsave="' + c.key + '" title="保存修改">✓</button>' +
+    '<button type="button" class="btn ghost small cm-del" data-catdel="' + c.key + '" title="删除该分类">🗑</button>' +
+    "</div>").join("");
+  pick.innerHTML = '<div class="cat-manage">' +
+    '<p class="cm-hint">改名称或图标后点 ✓ 保存；🗑 点一次变成「确认?」再点一次才删除。删除分类不影响已有任务数据（它们会显示为「未分类」）。</p>' +
+    (rows || '<p class="cm-hint">还没有自定义分类。</p>') +
+    '<button type="button" class="btn ghost small" id="mCatBack">‹ 返回</button></div>';
 }
 
 /* 自定义分类：在选择器内联展开一个小表单（不开新弹窗，避免顶掉任务表单），保存到账号并自动选中 */
@@ -3643,15 +3737,7 @@ function renderCatAddForm(pick, ref) {
     if (!label) { toast("请输入分类名称", true); return; }
     if (Object.values(catMap()).some(c => c.label === label)) { toast("已有同名分类", true); return; }
     const key = "c" + Date.now();
-    const next = customCats.concat([{ key, label, icon }]);
-    let saved = next;
-    if (profileId) {
-      const res = await db(cloud.database.from("user_profiles").update({ custom_categories: JSON.stringify(next) }).eq("id", profileId).select());
-      if (res && res[0]) {
-        try { saved = JSON.parse(res[0].custom_categories || "[]") || next; } catch (e) { /* 保存失败就用本地值 */ }
-      }
-    }
-    customCats = saved;
+    await persistCustomCats(customCats.concat([{ key, label, icon }]));
     if (ref && ref.set) ref.set(key);
     pick.innerHTML = catOptionsHtml(key);
     toast("已添加分类：" + icon + " " + label);
@@ -3744,6 +3830,8 @@ function renameTask(task) {
     categoryPickerHtml(task.category) +
     '<label class="modal-label">重要程度（决定卡片颜色）</label>' +
     levelPickerHtml(task.level) +
+    '<label class="modal-label">任务规划（整体怎么做、要点备忘）</label>' +
+    '<textarea id="mTaskPlan" class="modal-textarea" placeholder="写下执行计划、要点或备注…">' + esc(task.plan || "") + "</textarea>" +
     '<div class="modal-actions">' +
     '<button class="btn ghost" data-close="1">取消</button>' +
     '<button class="btn primary" id="mRenSave">保存</button>' +
@@ -3757,7 +3845,7 @@ function renameTask(task) {
   const save = async () => {
     const title = input.value.trim();
     if (!title) { toast("请输入任务标题", true); return; }
-    const patch = { title, level: getLevel(), category: getCat() || null };
+    const patch = { title, level: getLevel(), category: getCat() || null, plan: $id("mTaskPlan") ? $id("mTaskPlan").value : (task.plan || "") };
     const rows = await db(cloud.database.from("tasks").update(patch).eq("id", task.id).select());
     if (blocked(rows)) { toast("保存失败，请重新登录后再试", true); return; }
     Object.assign(task, patch);
@@ -3797,6 +3885,56 @@ function renameSubtask(sub) {
   bind("mRenSubSave", "click", save);
   input.addEventListener("keydown", e => { if (e.key === "Enter" && !e.isComposing && e.keyCode !== 229) save(); });
 }
+/* ============ 自动沉淀 ============
+   任务的所有子任务都完成时，自动「沉淀」：出列表 / 分层 / 统计，
+   月历打卡、专注记录、积分全部保留；可在任务列表底部的「已沉淀」区恢复。 */
+async function maybeAutoSettle(taskId) {
+  const t = tasks.find(x => x.id === taskId);
+  if (!t || archivedTaskIds.has(taskId)) return false;
+  const subs = taskSubs(taskId);
+  if (!subs.length || !subs.every(s => s.done)) return false;
+  const upd = await db(cloud.database.from("tasks").update({ archived: true }).eq("id", taskId).select());
+  if (blocked(upd)) return false;
+  archivedTaskIds.add(taskId);
+  t.archived = true;
+  archivedTasks = archivedTasks.filter(x => x.id !== taskId).concat([t]);
+  tasks = tasks.filter(x => x.id !== taskId);
+  subtasks = subtasks.filter(x => x.task_id !== taskId);
+  const archSubIds = new Set(allSubtasks.filter(x => x.task_id === taskId).map(x => x.id));
+  items = items.filter(i => !archSubIds.has(i.subtask_id));
+  /* 月目标关联到被沉淀任务的话要解绑，否则刷新后既没标签也没有加减按钮 */
+  for (const g of goals.filter(x => x.link_task_id === taskId)) {
+    try { await db(cloud.database.from("monthly_goals").update({ link_task_id: null }).eq("id", g.id).select()); } catch (e) {}
+    g.link_task_id = null;
+  }
+  renderAll();
+  celebrate();
+  sayCompanion("整个任务都完成啦！已经为你沉淀好 📦");
+  toast("🎉 「" + t.title + "」全部完成，已自动沉淀（月历与积分保留，可在任务列表底部找回）");
+  return true;
+}
+
+async function restoreTask(id) {
+  const upd = await db(cloud.database.from("tasks").update({ archived: false }).eq("id", id).select());
+  if (blocked(upd)) { toast("恢复失败：这条数据可能不属于当前账号，请重新登录后再试", true); return; }
+  toast("任务已恢复，正在刷新…");
+  await loadAll();
+}
+
+function settledSectionHtml() {
+  if (cardsMode !== "all" || !archivedTasks.length) return "";
+  const rows = archivedTasks.slice().sort((a, b) => b.id - a.id).map(t => {
+    const cat = catOf(t);
+    return '<div class="settled-row"><span class="cat-badge" title="' + cat.label + '">' + cat.icon + "</span>" +
+      '<span class="settled-name">' + esc(t.title) + "</span>" +
+      '<button class="btn ghost small" data-restore="' + t.id + '">恢复</button></div>';
+  }).join("");
+  return '<div class="settled-sec">' +
+    '<button id="settledToggle" class="settled-toggle">📦 已沉淀任务（' + archivedTasks.length + "）</button>" +
+    '<div id="settledList" class="settled-list hidden">' + rows +
+    '<p class="settled-hint">沉淀的任务不占列表和统计，但月历打卡、专注时长、积分都还在；点「恢复」可以拿回来继续用。</p></div></div>';
+}
+
 bind("modalOverlay", "click", (e) => {
   if (e.target === $id("modalOverlay")) closeModal();
 });
