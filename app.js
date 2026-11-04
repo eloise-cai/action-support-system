@@ -190,7 +190,7 @@ async function loadAll() {
   }
   const rawTasks = t.data || [];
   archivedTaskIds = new Set(rawTasks.filter(x => x.archived).map(x => x.id));
-  archivedTasks = rawTasks.filter(x => x.archived);
+  archivedTasks = rawTasks.filter(x => x.archived && !x.deleted); // deleted=true 的只删了卡片，后台数据还在
   tasks = rawTasks.filter(x => !x.archived);          // 列表 / 分层 / 统计只看活跃任务
   allSubtasks = s.data || [];
   subtasks = allSubtasks.filter(x => !archivedTaskIds.has(x.task_id));
@@ -3958,39 +3958,23 @@ async function restoreTask(id) {
   renderAll(); // loadAll 只刷新数据不重绘，必须补一次渲染卡片才会回来
 }
 
-/* 已沉淀任务的真实删除：任务、子任务、子子任务、专注记录一并清除；
-   已获得的积分保留（那是用户实打实赚到的）。二次确认防误删。 */
+/* 删除已沉淀任务 = 只删「卡片」：tasks.deleted 标记为 true，卡片从沉淀区消失，
+   但任务行、子任务、子子任务、专注记录、积分全部原样保留——
+   后台任务完成数、月历上已有的月任务完成和专注时长计算都不受影响。二次确认防误删。 */
 async function hardDeleteTask(id) {
   const t = archivedTasks.find(x => x.id === id);
   if (!t) return;
   const ok = await confirmDialog({
-    title: "彻底删除「" + t.title + "」？",
-    desc: "将从数据库中彻底删除该任务：子任务、子子任务、专注记录都会一并清除，且不可恢复。已获得的积分仍然保留。",
-    okText: "彻底删除"
+    title: "删除「" + t.title + "」的卡片？",
+    desc: "删除后这张任务卡不再显示；但后台的专注记录、月历上的月任务完成与专注时长统计、以及积分都会原样保留。",
+    okText: "删除卡片"
   });
   if (!ok) return;
-  try {
-    await db(cloud.database.from("pomodoro_sessions").delete().eq("task_id", id).select());
-    const subRows = allSubtasks.filter(x => x.task_id === id);
-    for (const s of subRows) {
-      try { await db(cloud.database.from("subtask_items").delete().eq("subtask_id", s.id).select()); } catch (e) {}
-      try { await db(cloud.database.from("subtasks").delete().eq("id", s.id).select()); } catch (e) {}
-    }
-    const rows = await db(cloud.database.from("tasks").delete().eq("id", id).select());
-    if (blocked(rows)) { toast("删除失败：这条数据可能不属于当前账号，请重新登录后再试", true); return; }
-  } catch (e) {
-    toast("删除失败，请稍后重试", true);
-    return;
-  }
+  const rows = await db(cloud.database.from("tasks").update({ deleted: true }).eq("id", id).select());
+  if (blocked(rows)) { toast("删除失败：这条数据可能不属于当前账号，请重新登录后再试", true); return; }
   archivedTasks = archivedTasks.filter(x => x.id !== id);
-  archivedTaskIds.delete(id);
-  allSubtasks = allSubtasks.filter(x => x.task_id !== id);
-  for (const g of goals.filter(x => x.link_task_id === id)) {
-    try { await db(cloud.database.from("monthly_goals").update({ link_task_id: null }).eq("id", g.id).select()); } catch (e) {}
-    g.link_task_id = null;
-  }
   renderAll();
-  toast("已彻底删除「" + t.title + "」，积分保留");
+  toast("已删除「" + t.title + "」的卡片 · 专注记录与月历统计都保留 📅");
 }
 
 function settledSectionHtml() {
@@ -4000,12 +3984,12 @@ function settledSectionHtml() {
     return '<div class="settled-row"><span class="cat-badge" title="' + cat.label + '">' + cat.icon + "</span>" +
       '<span class="settled-name">' + esc(t.title) + "</span>" +
       '<button class="btn ghost small" data-restore="' + t.id + '">恢复</button>' +
-      '<button class="settled-del" data-delsettled="' + t.id + '" title="彻底删除该任务">🗑</button></div>';
+      '<button class="settled-del" data-delsettled="' + t.id + '" title="删除卡片（后台记录保留）">🗑</button></div>';
   }).join("");
   return '<div class="settled-sec">' +
     '<button id="settledToggle" class="settled-toggle">📦 已沉淀任务（' + archivedTasks.length + "）</button>" +
     '<div id="settledList" class="settled-list hidden">' + rows +
-    '<p class="settled-hint">沉淀的任务不占列表和统计，但月历打卡、专注时长、积分都还在；点「恢复」可以拿回来继续用，点「🗑」二次确认后彻底删除。</p></div></div>';
+    '<p class="settled-hint">沉淀的任务不占列表和统计，但月历打卡、专注时长、积分都还在；点「恢复」可以拿回来继续用，点「🗑」二次确认后删除卡片（后台记录与统计保留）。</p></div></div>';
 }
 
 bind("modalOverlay", "click", (e) => {
