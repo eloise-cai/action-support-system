@@ -2424,6 +2424,43 @@ function shiftMoney(delta) {
   renderMoney();
 }
 
+/* 当期支出拆解环形图（右栏）：按分类聚合当期开支，环形段 + 图例占比 */
+const EXP_COLORS = ["#ff8f93", "#ffc76b", "#4f8cff", "#2fbf71", "#b07cff", "#4dd0e1", "#ff9f6b", "#9ccc65", "#e57373", "#7986cb"];
+function renderExpDonut(byCat, totalExp, unit) {
+  const el = $id("expDonut"), lg = $id("expDonutLegend"), tEl = $id("expDonutT");
+  if (!el) return;
+  if (tEl) tEl.textContent = (unit || "当期") + "支出拆解";
+  const rows = Object.keys(byCat).map(k => ({ name: k, amount: byCat[k] })).sort((a, b) => b.amount - a.amount);
+  if (!rows.length) {
+    el.innerHTML = '<div class="exp-donut-empty">当期还没有支出记录<br>点右上角「＋ 记一笔」后<br>这里会显示支出占比 🧾</div>';
+    if (lg) lg.innerHTML = "";
+    return;
+  }
+  const C = 2 * Math.PI * 54;
+  let offset = 0, segs = "";
+  rows.forEach((r, i) => {
+    const len = totalExp > 0 ? r.amount / totalExp * C : 0;
+    segs += '<circle cx="70" cy="70" r="54" fill="none" stroke="' + EXP_COLORS[i % EXP_COLORS.length] +
+      '" stroke-width="17" stroke-dasharray="' + Math.max(0, len - 1.5) + " " + (C - Math.max(0, len - 1.5)) +
+      '" stroke-dashoffset="' + (-offset) + '"></circle>';
+    offset += len;
+  });
+  el.innerHTML =
+    '<svg viewBox="0 0 140 140" width="132" height="132">' +
+    '<circle cx="70" cy="70" r="54" fill="none" stroke="rgba(255,255,255,.08)" stroke-width="17"></circle>' +
+    '<g transform="rotate(-90 70 70)">' + segs + "</g>" +
+    '<text x="70" y="65" text-anchor="middle" font-size="9.5" fill="rgba(255,255,255,.55)">当期支出</text>' +
+    '<text x="70" y="81" text-anchor="middle" font-size="13" font-weight="700" fill="#fff">' + (totalExp >= 10000 ? (Math.round(totalExp / 100) / 100) + "万" : Math.round(totalExp)) + "</text>" +
+    "</svg>";
+  if (lg) lg.innerHTML = rows.map((r, i) => {
+    const color = EXP_COLORS[i % EXP_COLORS.length];
+    const pct = totalExp > 0 ? Math.round(r.amount / totalExp * 100) : 0;
+    return '<div class="exp-leg"><span class="bd-dot" style="background:' + color + '"></span>' +
+      '<span class="bd-leg-name">' + esc(r.name) + "</span>" +
+      '<span class="bd-leg-val">' + fmtYuan(r.amount) + " · " + pct + "%</span></div>";
+  }).join("");
+}
+
 function renderMoney() {
   const R = moneyRange();
   const lbl = $id("periodLabel");
@@ -2471,6 +2508,15 @@ function renderMoney() {
   if ($id("netWorthSub")) $id("netWorthSub").textContent =
     "🏦 " + fmtYuan(totalSave) + " ＋ 📈 " + fmtYuan(totalInvest) +
     " ＋ 💰 收入 " + fmtYuan(inc) + " − 🛒 开支 " + fmtYuan(exp);
+
+  /* 右侧：当期支出项目环形拆解（按分类聚合） */
+  const byCat = {};
+  for (const r of inRange) {
+    if (r.kind !== "expense") continue;
+    const c = r.category || "其他";
+    byCat[c] = (byCat[c] || 0) + (parseFloat(r.amount) || 0);
+  }
+  renderExpDonut(byCat, exp, unit);
 
   /* 柱状图（按支出高度） */
   const todayStr = localDateStr(new Date());
