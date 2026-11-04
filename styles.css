@@ -1477,6 +1477,39 @@ main { max-width: 1100px; margin: 0 auto; padding: 22px 18px 80px; }
 .lt-icon-btn { border: none; background: none; cursor: pointer; color: var(--text-sub); font-size: 13px; padding: 2px 4px; border-radius: 6px; }
 .lt-icon-btn:hover { color: #fff; background: rgba(255, 255, 255, .06); }
 
+/* ============ 目标管理：年历（12 个小月格）+ 横条时间线 ============ */
+.yg-year { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 4px; }
+.yg-month {
+  background: var(--card); border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 8px 9px 9px;
+}
+.yg-month.cur { border-color: rgba(79, 140, 255, .45); }
+.yg-m-t { font-size: 12px; font-weight: 700; margin-bottom: 5px; color: var(--text); }
+.yg-month.cur .yg-m-t { color: var(--accent); }
+.yg-week { display: grid; grid-template-columns: repeat(7, 1fr); margin-bottom: 2px; }
+.yg-week span { font-size: 9px; text-align: center; color: var(--text-sub); }
+.yg-grid-wrap { position: relative; }
+.yg-days { display: grid; grid-template-columns: repeat(7, 1fr); grid-auto-rows: var(--yg-cell, 18px); }
+.yg-day {
+  font-size: 9px; line-height: 18px; text-align: center; color: var(--text-sub);
+  border-radius: 3px; min-width: 0;
+}
+.yg-day.blank { visibility: hidden; }
+.yg-day.today { background: var(--accent); color: #fff; font-weight: 700; }
+.yg-overlay { position: absolute; inset: 0; pointer-events: none; z-index: 2; }
+.yg-bar {
+  position: absolute; height: 6px; z-index: 2; pointer-events: auto; cursor: pointer;
+  border-radius: 3px; box-shadow: 0 1px 3px rgba(0, 0, 0, .4);
+}
+.yg-bar.bar-p { background: linear-gradient(90deg, #4f8cff, #7aa5ff); }
+.yg-bar.bar-c { background: #33518a; height: 5px; border-radius: 2.5px; }
+.yg-bar.bar-done { background: var(--green) !important; opacity: .85; }
+.yg-bar:hover { filter: brightness(1.25); }
+.yg-hint { font-size: 11px; color: var(--text-sub); margin: 2px 2px 0; line-height: 1.7; }
+@media (max-width: 1180px) { .yg-year { grid-template-columns: repeat(3, 1fr); } }
+@media (max-width: 880px) { .yg-year { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 560px) { .yg-year { grid-template-columns: 1fr; } }
+
 /* ---------- 主题皮肤（C2） ---------- */
 .skin-btn {
   border: 1px solid var(--border); background: var(--bg-soft); color: var(--text);

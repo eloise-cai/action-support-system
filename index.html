@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>行动支持系统</title>
-<link rel="stylesheet" href="styles.css?v=20261103g">
+<link rel="stylesheet" href="styles.css?v=20261104a">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🍅</text></svg>">
 </head>
 <body>
@@ -46,6 +46,7 @@
     <button class="tab" data-tab="layers">分层卡片</button>
     <button class="tab" data-tab="stats">归纳统计</button>
     <button class="tab" data-tab="month">月历</button>
+    <button class="tab" data-tab="goals">目标管理</button>
     <button class="tab" data-tab="points">积分奖励</button>
     <button class="tab" data-tab="money">收支</button>
     <button class="tab" data-tab="schedule">每日日程</button>
@@ -153,6 +154,26 @@
       <div id="rewardsList" class="rewards-list"></div>
       <h3 class="pts-sub-title">📜 积分记录</h3>
       <div id="pointsLog" class="points-log"></div>
+    </section>
+
+    <!-- 目标管理：以年为单位的计划目标，年历铺时间线 + 手账列表 -->
+    <section id="tab-goals" class="tab-pane hidden">
+      <div class="pane-head">
+        <div>
+          <h2>目标管理</h2>
+          <p class="pane-desc">以年为单位的大计划：每条目标和子目标都有时间线，像月历一样铺在上面的年历里</p>
+        </div>
+        <button id="addYgBtn" class="btn primary">＋ 添加年度目标</button>
+      </div>
+      <div class="date-nav">
+        <button id="ygPrevBtn" class="btn ghost small">‹</button>
+        <span id="ygYearLabel" class="date-label" style="min-width:90px;text-align:center"></span>
+        <button id="ygNextBtn" class="btn ghost small">›</button>
+        <button id="ygTodayBtn" class="btn ghost small">今年</button>
+      </div>
+      <div id="ygYearCal" class="yg-year"></div>
+      <p class="yg-hint">横条＝时间线：<b style="color:#7aa5ff">蓝＝目标</b> · 浅蓝＝子目标 · <b style="color:var(--green)">绿＝已完成</b>；单击横条可直接编辑，本月格子有蓝色边框。</p>
+      <div id="ygList" class="lt-list"></div>
     </section>
 
     <!-- 月历 -->
@@ -380,6 +401,6 @@
 <div id="toast" class="toast hidden"></div>
 
 <script src="https://cdn.jsdelivr.net/npm/@tencent-ai/workbuddy-cloud-sdk@dev/lib/index.global.js"></script>
-<script src="app.js?v=20261103g"></script>
+<script src="app.js?v=20261104a"></script>
 </body>
 </html>

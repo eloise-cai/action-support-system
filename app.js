@@ -49,6 +49,8 @@ let moneyRecords = []; // 收支记录
 let moneyPeriod = "week"; // 收支页统计口径：week | month | year
 let moneyAnchor = null; // 收支页当前查看的锚点日期 { y, m, d }（null = 当前周期）
 let longtermTasks = []; // 长线任务（含子任务，parent_id 关联）
+let yearGoals = []; // 年度目标（目标管理页，结构与长线任务一致）
+let ygView = null; // 年历当前查看的年份，null = 今年
 let checkinItems = []; // 项目打卡：想坚持的小事
 let checkinRecords = []; // 打卡记录 { item_id, checkin_date }
 let ltView = null; // 长线月历当前查看的 { y, m }（null = 本月）
@@ -170,7 +172,7 @@ bind("logoutBtn", "click", async () => {
 
 /* ============ 数据加载 ============ */
 async function loadAll() {
-  const [t, s, p, it, pt, rw, gl, mr, lt, ci, cr] = await Promise.all([
+  const [t, s, p, it, pt, rw, gl, mr, lt, ci, cr, yg] = await Promise.all([
     cloud.database.from("tasks").select("*").order("sort_order").order("id"),
     cloud.database.from("subtasks").select("*").order("id"),
     cloud.database.from("pomodoro_sessions").select("*").order("started_at").limit(5000),
@@ -182,8 +184,9 @@ async function loadAll() {
     cloud.database.from("longterm_tasks").select("*").order("sort_order").order("id"),
     cloud.database.from("checkin_items").select("*").order("id"),
     cloud.database.from("checkin_records").select("*").order("checkin_date").order("id").limit(5000),
+    cloud.database.from("year_goals").select("*").order("sort_order").order("id"),
   ]);
-  const err = t.error || s.error || p.error || it.error || pt.error || rw.error || gl.error || mr.error || lt.error || ci.error || cr.error;
+  const err = t.error || s.error || p.error || it.error || pt.error || rw.error || gl.error || mr.error || lt.error || ci.error || cr.error || yg.error;
   if (err) {
     toast("数据加载失败：" + (err.message || "请刷新重试"), true);
     return;
@@ -202,6 +205,7 @@ async function loadAll() {
   goals = gl.data || [];
   moneyRecords = mr.data || [];
   longtermTasks = lt.data || [];
+  yearGoals = yg.data || [];
   checkinItems = ci.data || [];
   checkinRecords = cr.data || [];
   renderPointsChip();
@@ -312,6 +316,7 @@ cloud.auth.onAuthStateChange((event) => {
     customCats = [];
     archivedTasks = [];
     longtermTasks = []; checkinItems = []; checkinRecords = [];
+    yearGoals = []; ygView = null;
     applyTheme("default"); // 退出登录恢复默认主题
     chatMsgs = []; abcRecords = []; abcLoaded = false;
     saveChatStorage();
@@ -332,6 +337,7 @@ document.querySelectorAll(".tab").forEach(btn => {
     if (btn.dataset.tab === "mind") renderMind();
     if (btn.dataset.tab === "points") renderPoints();
     if (btn.dataset.tab === "month") renderMonth();
+    if (btn.dataset.tab === "goals") renderGoals();
     if (btn.dataset.tab === "money") renderMoney();
     if (btn.dataset.tab === "cards") guideOnEnter(); // 进入任务列表时的伙伴引导
   });
@@ -4373,6 +4379,233 @@ bind("ltPrevBtn", "click", () => { ltView = ltShiftMonth(-1); renderLongterm(); 
 bind("ltNextBtn", "click", () => { ltView = ltShiftMonth(1); renderLongterm(); });
 bind("ltTodayBtn", "click", () => { ltView = null; renderLongterm(); });
 
+/* ============ 目标管理：以年为单位的计划目标 ============ */
+/* 结构与长线任务一致（母目标 + 子目标，各有起止日期），
+   上面是 12 个小月格拼成的年历，目标时间线以横条铺在对应月份里。 */
+
+function ygParents() {
+  return yearGoals.filter(x => !x.parent_id)
+    .sort((a, b) => (a.start_date < b.start_date ? -1 : a.start_date > b.start_date ? 1 : (a.sort_order || 0) - (b.sort_order || 0)));
+}
+function ygChildren(pid) {
+  return yearGoals.filter(x => x.parent_id === pid)
+    .sort((a, b) => (a.start_date < b.start_date ? -1 : 1));
+}
+
+function renderGoals() {
+  if (!$id("ygYearCal")) return; // 旧缓存 HTML：元素不存在时静默跳过
+  renderYgCal();
+  renderYgList();
+}
+
+const YG_CELL = 18;   // 小月格单行高度（px），须与 CSS --yg-cell 一致
+const YG_LANE = 8;    // 同一格内多条横条的层距（px）
+const YG_LANES = 3;   // 最多层数，超出则共用最后一层
+
+function renderYgCal() {
+  const y = ygView || new Date().getFullYear();
+  $id("ygYearLabel").textContent = y + " 年";
+  const today = localDateStr(new Date());
+  const rows = [];
+  for (const p of ygParents()) {
+    rows.push({ t: p, isParent: true });
+    for (const c of ygChildren(p.id)) rows.push({ t: c, isParent: false });
+  }
+
+  let html = "";
+  for (let m = 0; m < 12; m++) {
+    const dim = daysInMonth(y, m);
+    const firstDow = (new Date(y, m, 1).getDay() + 6) % 7; // 0=周一
+    const monthPre = y + "-" + String(m + 1).padStart(2, "0") + "-";
+    html += '<div class="yg-month' + (today.slice(0, 7) === monthPre.slice(0, 7) ? " cur" : "") + '">';
+    html += '<div class="yg-m-t">' + (m + 1) + " 月</div>";
+    html += '<div class="yg-week"><span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span><span>日</span></div>';
+    html += '<div class="yg-grid-wrap"><div class="yg-days">';
+    for (let i = 0; i < firstDow; i++) html += '<span class="yg-day blank"></span>';
+    for (let d = 1; d <= dim; d++) {
+      const isToday = monthPre + String(d).padStart(2, "0") === today;
+      html += '<span class="yg-day' + (isToday ? " today" : "") + '">' + d + "</span>";
+    }
+    html += "</div>";
+
+    /* 横条层：把该月内有效的目标/子目标按周切成小段铺在日格上 */
+    const active = rows
+      .map(r => ({ r, span: ltSpan(r.t, y, m) }))
+      .filter(x => x.span)
+      .sort((a, b) => (a.r.t.start_date < b.r.t.start_date ? -1 : 1));
+    const laneEnd = [];
+    html += '<div class="yg-overlay">';
+    for (const { r, span } of active) {
+      const [d1, d2] = span;
+      let lane = laneEnd.findIndex(end => end < r.t.start_date);
+      if (lane < 0) {
+        lane = Math.min(laneEnd.length, YG_LANES - 1);
+        laneEnd[lane] = r.t.end_date;
+      } else {
+        laneEnd[lane] = r.t.end_date;
+      }
+      const cls = "yg-bar " + (r.isParent ? "bar-p" : "bar-c") + (r.t.done ? " bar-done" : "");
+      let d = d1;
+      while (d <= d2) {
+        const rowIdx = Math.floor((firstDow + d - 1) / 7);
+        const colStart = (firstDow + d - 1) % 7;
+        const rowLast = d + (6 - colStart);
+        const segEnd = Math.min(d2, rowLast);
+        const left = colStart / 7 * 100;
+        const width = (segEnd - d + 1) / 7 * 100;
+        const top = rowIdx * YG_CELL + YG_CELL - 7 - lane * YG_LANE;
+        html += '<span class="' + cls + '" data-yg="' + r.t.id + '" title="' + esc(r.t.title) +
+          " " + md(r.t.start_date) + " - " + md(r.t.end_date) +
+          '" style="left:' + left.toFixed(2) + "%;width:" + width.toFixed(2) + "%;top:" + top + 'px"></span>';
+        d = segEnd + 1;
+      }
+    }
+    html += "</div></div></div>";
+  }
+  $id("ygYearCal").innerHTML = html ||
+    '<div class="lt-empty">年历加载中…</div>';
+}
+
+function renderYgList() {
+  const wrap = $id("ygList");
+  if (!wrap) return;
+  const parents = ygParents();
+  if (!parents.length) {
+    wrap.innerHTML = '<div class="lt-empty">还没有年度目标。点上方「＋ 添加年度目标」，比如「考下基金从业资格」，再拆成「3 月报名」「6 月刷题」……每条都能设自己的时间线。</div>';
+    return;
+  }
+  let html = "";
+  for (const p of parents) {
+    const kids = ygChildren(p.id);
+    const doneN = kids.filter(k => k.done).length;
+    html += '<div class="lt-card' + (p.done ? " done" : "") + '">';
+    html += '<div class="lt-card-top">';
+    html += '<span class="lt-title">' + esc(p.title) + "</span>";
+    html += '<span class="lt-dates">' + md(p.start_date) + " - " + md(p.end_date) + "</span>";
+    if (kids.length) html += '<span class="lt-prog">子目标 ' + doneN + "/" + kids.length + "</span>";
+    html += "</div>";
+    html += '<div class="lt-ops">';
+    html += '<button class="btn ghost small" data-act="done" data-id="' + p.id + '">' + (p.done ? "↩ 恢复" : "✓ 完成") + "</button>";
+    html += '<button class="btn ghost small" data-act="add" data-id="' + p.id + '">＋ 子目标</button>';
+    html += '<button class="btn ghost small" data-act="edit" data-id="' + p.id + '">✎ 编辑</button>';
+    html += '<button class="btn ghost small" data-act="del" data-id="' + p.id + '">🗑 删除</button>';
+    html += "</div>";
+    if (kids.length) {
+      html += '<div class="lt-subs">';
+      for (const k of kids) {
+        html += '<div class="lt-sub-item' + (k.done ? " done" : "") + '">';
+        html += '<button class="lt-icon-btn" data-act="done" data-id="' + k.id + '">' + (k.done ? "✅" : "⬜") + "</button>";
+        html += '<span class="lt-sub-name">' + esc(k.title) + "</span>";
+        html += '<span class="lt-sub-dates">' + md(k.start_date) + " - " + md(k.end_date) + "</span>";
+        html += '<button class="lt-icon-btn" data-act="edit" data-id="' + k.id + '">✎</button>';
+        html += '<button class="lt-icon-btn" data-act="del" data-id="' + k.id + '">🗑</button>';
+        html += "</div>";
+      }
+      html += "</div>";
+    }
+    html += "</div>";
+  }
+  wrap.innerHTML = html;
+}
+
+/* 新建 / 编辑年度目标（母目标与子目标共用一张表单） */
+function openYgModal(parentId, t) {
+  const isChild = !!parentId && !t;
+  const today = localDateStr(new Date());
+  const defEnd = localDateStr(new Date(Date.now() + 90 * 86400000));
+  openModal(
+    "<h3>" + (t ? "编辑" : isChild ? "添加子目标" : "新建年度目标") + "</h3>" +
+    '<label class="modal-label">名称' + (isChild ? "（如：3 月完成报名）" : "（如：考下基金从业资格）") + "</label>" +
+    '<input id="mYgTitle" class="modal-input" maxlength="50" value="' + esc(t ? t.title : "") + '">' +
+    '<label class="modal-label">开始日期</label>' +
+    '<input id="mYgStart" type="date" class="modal-input" value="' + (t ? t.start_date : today) + '">' +
+    '<label class="modal-label">结束日期</label>' +
+    '<input id="mYgEnd" type="date" class="modal-input" value="' + (t ? t.end_date : defEnd) + '">' +
+    '<div class="modal-actions">' +
+    '<button class="btn ghost" data-close="1">取消</button>' +
+    '<button class="btn primary" id="mYgSave">保存</button>' +
+    "</div>"
+  );
+  bind("mYgSave", "click", async () => {
+    const title = $id("mYgTitle").value.trim();
+    const start = $id("mYgStart").value, end = $id("mYgEnd").value;
+    if (!title) { toast("请输入名称", true); return; }
+    if (!start || !end) { toast("请选择开始和结束日期", true); return; }
+    if (end < start) { toast("结束日期不能早于开始日期", true); return; }
+    const payload = { title, start_date: start, end_date: end };
+    let rows;
+    if (t) {
+      rows = await db(cloud.database.from("year_goals").update(payload).eq("id", t.id).select());
+    } else {
+      if (isChild) payload.parent_id = parentId;
+      payload.sort_order = yearGoals.filter(x => x.parent_id === parentId).length + 1;
+      rows = await db(cloud.database.from("year_goals").insert(payload).select());
+    }
+    if (rows && rows[0]) {
+      const i = yearGoals.findIndex(x => x.id === rows[0].id);
+      if (i >= 0) yearGoals[i] = rows[0]; else yearGoals.push(rows[0]);
+    }
+    closeModal();
+    renderGoals();
+  });
+  $id("mYgTitle").focus();
+}
+
+/* 年度目标列表事件委托（innerHTML 重画，绑在容器上） */
+const ygListEl = $id("ygList");
+if (ygListEl) {
+  ygListEl.addEventListener("click", async e => {
+    const btn = e.target.closest("[data-act]");
+    if (!btn) return;
+    const t = yearGoals.find(x => x.id == btn.dataset.id);
+    if (!t) return;
+    const act = btn.dataset.act;
+    if (act === "done") {
+      const rows = await db(cloud.database.from("year_goals").update({ done: !t.done }).eq("id", t.id).select());
+      if (rows && rows[0]) {
+        const i = yearGoals.findIndex(x => x.id === rows[0].id);
+        if (i >= 0) yearGoals[i] = rows[0];
+      }
+      renderGoals();
+      if (!t.done && rows && rows[0] && rows[0].done) {
+        celebrate();
+        toast(t.parent_id ? "🎯 子目标「" + t.title + "」达成！" : "🎉 年度目标「" + t.title + "」完成！");
+      }
+    } else if (act === "add") {
+      openYgModal(t.id, null);
+    } else if (act === "edit") {
+      openYgModal(t.parent_id, t);
+    } else if (act === "del") {
+      const n = t.parent_id ? 0 : ygChildren(t.id).length;
+      const ok = await confirmDialog({
+        title: "删除「" + t.title + "」？",
+        desc: n ? "下面挂的 " + n + " 个子目标会一起删除。" : "",
+        okText: "删除",
+      });
+      if (!ok) return;
+      await db(cloud.database.from("year_goals").delete().eq("id", t.id));
+      yearGoals = yearGoals.filter(x => x.id !== t.id && x.parent_id !== t.id);
+      renderGoals();
+    }
+  });
+}
+
+/* 点年历横条直接编辑 */
+const ygCalEl = $id("ygYearCal");
+if (ygCalEl) {
+  ygCalEl.addEventListener("click", e => {
+    const bar = e.target.closest("[data-yg]");
+    if (!bar) return;
+    const t = yearGoals.find(x => x.id == bar.dataset.yg);
+    if (t) openYgModal(t.parent_id, t);
+  });
+}
+
+bind("addYgBtn", "click", () => openYgModal(null, null));
+bind("ygPrevBtn", "click", () => { ygView = (ygView || new Date().getFullYear()) - 1; renderGoals(); });
+bind("ygNextBtn", "click", () => { ygView = (ygView || new Date().getFullYear()) + 1; renderGoals(); });
+bind("ygTodayBtn", "click", () => { ygView = null; renderGoals(); });
+
 /* ============ 主题皮肤（C2）：挑战解锁 + ID 旁选择，已解锁永久保留 ============ */
 let currentTheme = "default";
 const THEMES = [
@@ -4533,6 +4766,7 @@ function renderAll() {
   renderCards();
   renderStats();
   renderLongterm();
+  renderGoals();
   renderPointsChip();
   if (!$id("layerView").classList.contains("hidden")) renderLayer();
   if (!$id("tab-layers").classList.contains("hidden")) renderLayers();
