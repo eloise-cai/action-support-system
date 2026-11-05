@@ -221,6 +221,7 @@ async function boot() {
   restoreTimer();
   restoreRest(); // 休息中途刷新/锁屏回来，接着计时
   renderAll();
+  maybeOverdueNudge(); // 有过期任务时，用不评判的方式提醒一次
   renderFloat();
   setTimeout(guideOnEnter, 2500); // 默认落在任务列表，伙伴打个招呼
   initChat(); // 心理页：加载模型列表与历史对话（异步，不阻塞）
@@ -1218,6 +1219,7 @@ function finishTimerRound() {
     toast(overrun > 120
       ? "🍅 你不在的时候这一轮已经走完了 · 记录 " + fmtDur(secs) + "，+" + pts + " 分"
       : "🍅 番茄钟完成！记录 " + fmtDur(secs) + " · +" + pts + " 分");
+    setTimeout(maybePlayHardNudge, 2200); // 满足当日专注量时提醒：玩是赚来的
   });
   try { new Audio("data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAZGF0YQQAAAAAAA==").play().catch(() => {}); } catch (e) {}
   /* 一轮结束 → 直接进入「分级休息」，不让用户自己在「再撑一会 / 休息」之间反复内耗。
@@ -1672,10 +1674,16 @@ function finishSpark(reason) {
 /* ---- 分级休息：浅休息不切场景 / 深休息先留线 ---- */
 function openRest(sub) {
   const s = sub || (timer ? subtasks.find(x => x.id === timer.subtaskId) : null) || pickBestSub();
+  const lastSes = sessions[sessions.length - 1];
   flowOpen(
     '<div class="flow-emoji">☕</div>' +
     '<div class="flow-title">现在休息</div>' +
     '<div class="flow-sub">休息不是奖励，是下一轮的成本。先选一种。</div>' +
+    (lastSes && !lastSes.flow
+      ? '<div class="flow-q" id="flowQRow">刚才这一轮进入心流了吗？' +
+        '<button class="btn ghost small" id="flowYes">😌 有心流</button>' +
+        '<button class="btn ghost small" id="flowNo">先不标记</button></div>'
+      : "") +
     '<button class="rest-opt" data-rest="light">' +
     '<span class="ro-icon">🫧</span>' +
     '<span class="ro-body"><b>浅休息 · 5 分钟</b>' +
@@ -1690,6 +1698,19 @@ function openRest(sub) {
     "</button>" +
     '<button class="btn ghost block" id="restNone" style="margin-top:10px">先不休息，接着做</button>'
   );
+  /* 心流时刻：用户验证过的内在奖赏源，显性化记录下来（过程读数里会累计） */
+  if ($id("flowQRow")) {
+    bind("flowYes", "click", async () => {
+      if (lastSes) {
+        try { await db(cloud.database.from("pomodoro_sessions").update({ flow: true }).eq("id", lastSes.id).select()); } catch (e) {}
+        lastSes.flow = true;
+      }
+      const row = $id("flowQRow");
+      if (row) row.innerHTML = '💫 心流时刻已记下——这就是你验证过的充电方式，第 <b>' + sessions.filter(x => x.flow).length + '</b> 次';
+      sayCompanion("心流是你最幸福的时刻，多制造几次 💫");
+    });
+    bind("flowNo", "click", () => { const row = $id("flowQRow"); if (row) row.remove(); });
+  }
   const layer = $id("flowLayer");
   layer.querySelectorAll("[data-rest]").forEach(b => {
     b.addEventListener("click", () => {
@@ -1947,13 +1968,29 @@ function renderStats() {
     return;
   }
   const totalSec = sessions.reduce((a, b) => a + (b.duration_seconds || 0), 0);
+  /* 过程读数：评价「投入与坚持」而不是「结果」，一次失败不再一票否决 */
+  const flowCnt = sessions.filter(x => x.flow).length;
+  const focusDays = new Set(sessions.map(x => x.session_date).filter(Boolean));
+  let streak = 0;
+  const d = new Date();
+  if (!focusDays.has(localDateStr(d))) d.setDate(d.getDate() - 1); // 今天还没开始专注不中断连续
+  while (focusDays.has(localDateStr(d))) { streak++; d.setDate(d.getDate() - 1); }
+  const stepsDone = subtasks.filter(x => x.done).length + items.filter(x => x.done).length;
+  let html = '<div class="stat-row process-row" style="border-left:3px solid var(--green)">' +
+    '<div class="stat-top"><span class="stat-title">🌱 过程读数（看投入，不看结果）</span>' +
+    '<span class="stat-nums">' +
+    '<span>💫 心流 <b class="n-flow">' + flowCnt + "</b> 次</span>" +
+    '<span>🔥 连续专注 <b class="n-streak">' + streak + "</b> 天</span>" +
+    '<span>✓ 完成小步 <b class="n-steps">' + stepsDone + "</b> 个</span>" +
+    "</span></div>" +
+    '<div class="stat-sub">每一次专注和小步都是给「想成为的自己」投票，单次结果说明不了什么</div></div>';
   const catCount = {};
   tasks.forEach(t => { const k = t.category || "none"; catCount[k] = (catCount[k] || 0) + 1; });
   const catLine = Object.keys(catCount).map(k => {
     const c = catMap()[k] || { icon: "📁", label: "未分类" };
     return c.icon + " " + c.label + " " + catCount[k];
   }).join("　");
-  let html = '<div class="stat-row" style="border-left:3px solid var(--accent)">' +
+  html += '<div class="stat-row" style="border-left:3px solid var(--accent)">' +
     '<div class="stat-top"><span class="stat-title">📊 总览</span>' +
     '<span class="stat-nums">任务 <b>' + tasks.length + '</b> 个 · 子任务 <b>' + subtasks.length + '</b> 个 · 子子任务 <b>' + items.length + '</b> 个 · 累计专注 <b class="n-time">' + fmtDur(totalSec) + "</b></span></div>" +
     '<div class="stat-sub">' + catLine + "</div></div>";
@@ -4326,6 +4363,7 @@ function renderLtList() {
     html += '<span class="lt-dates">' + md(p.start_date) + " - " + md(p.end_date) + "</span>";
     if (kids.length) html += '<span class="lt-prog">子任务 ' + doneN + "/" + kids.length + "</span>";
     html += "</div>";
+    if (p.identity) html += '<div class="lt-ident">🌱 这不是为了证明什么，而是因为我想成为——' + esc(p.identity) + "</div>";
     html += '<div class="lt-ops">';
     html += '<button class="btn ghost small" data-act="done" data-id="' + p.id + '">' + (p.done ? "↩ 恢复" : "✓ 完成") + "</button>";
     html += '<button class="btn ghost small" data-act="add" data-id="' + p.id + '">＋ 子任务</button>';
@@ -4353,6 +4391,7 @@ function renderLtList() {
 /* 新建 / 编辑长线任务（母任务与子任务共用一张表单） */
 function openLtModal(parentId, t) {
   const isChild = !!parentId && !t;
+  const isParentForm = t ? !t.parent_id : !isChild; // 身份陈述只属于母任务
   const today = localDateStr(new Date());
   const defEnd = localDateStr(new Date(Date.now() + 26 * 86400000));
   openModal(
@@ -4363,6 +4402,10 @@ function openLtModal(parentId, t) {
     '<input id="mLtStart" type="date" class="modal-input" value="' + (t ? t.start_date : today) + '">' +
     '<label class="modal-label">结束日期</label>' +
     '<input id="mLtEnd" type="date" class="modal-input" value="' + (t ? t.end_date : defEnd) + '">' +
+    (isParentForm
+      ? '<label class="modal-label">🌱 身份陈述（可选）——这不是为了证明什么，而是因为我想成为…</label>' +
+        '<input id="mLtIdentity" class="modal-input" maxlength="80" placeholder="例：一个能帮客户真正解决问题的专业顾问" value="' + esc(t ? t.identity || "" : "") + '">'
+      : "") +
     '<div class="modal-actions">' +
     '<button class="btn ghost" data-close="1">取消</button>' +
     '<button class="btn primary" id="mLtSave">保存</button>' +
@@ -4375,6 +4418,7 @@ function openLtModal(parentId, t) {
     if (!start || !end) { toast("请选择开始和结束日期", true); return; }
     if (end < start) { toast("结束日期不能早于开始日期", true); return; }
     const payload = { title, start_date: start, end_date: end };
+    if ($id("mLtIdentity")) payload.identity = $id("mLtIdentity").value.trim();
     let rows;
     if (t) {
       rows = await db(cloud.database.from("longterm_tasks").update(payload).eq("id", t.id).select());
@@ -4566,6 +4610,7 @@ function renderYgList() {
     html += '<span class="lt-dates">' + md(p.start_date) + " - " + md(p.end_date) + "</span>";
     if (kids.length) html += '<span class="lt-prog">子目标 ' + doneN + "/" + kids.length + "</span>";
     html += "</div>";
+    if (p.identity) html += '<div class="lt-ident">🌱 这不是为了证明什么，而是因为我想成为——' + esc(p.identity) + "</div>";
     html += '<div class="lt-ops">';
     html += '<button class="btn ghost small" data-act="done" data-id="' + p.id + '">' + (p.done ? "↩ 恢复" : "✓ 完成") + "</button>";
     html += '<button class="btn ghost small" data-act="add" data-id="' + p.id + '">＋ 子目标</button>';
@@ -4593,6 +4638,7 @@ function renderYgList() {
 /* 新建 / 编辑年度目标（母目标与子目标共用一张表单） */
 function openYgModal(parentId, t) {
   const isChild = !!parentId && !t;
+  const isParentForm = t ? !t.parent_id : !isChild;
   const today = localDateStr(new Date());
   const defEnd = localDateStr(new Date(Date.now() + 90 * 86400000));
   openModal(
@@ -4603,6 +4649,10 @@ function openYgModal(parentId, t) {
     '<input id="mYgStart" type="date" class="modal-input" value="' + (t ? t.start_date : today) + '">' +
     '<label class="modal-label">结束日期</label>' +
     '<input id="mYgEnd" type="date" class="modal-input" value="' + (t ? t.end_date : defEnd) + '">' +
+    (isParentForm
+      ? '<label class="modal-label">🌱 身份陈述（可选）——这不是为了证明什么，而是因为我想成为…</label>' +
+        '<input id="mYgIdentity" class="modal-input" maxlength="80" placeholder="例：一个能帮客户真正解决问题的专业顾问" value="' + esc(t ? t.identity || "" : "") + '">'
+      : "") +
     '<div class="modal-actions">' +
     '<button class="btn ghost" data-close="1">取消</button>' +
     '<button class="btn primary" id="mYgSave">保存</button>' +
@@ -4615,6 +4665,7 @@ function openYgModal(parentId, t) {
     if (!start || !end) { toast("请选择开始和结束日期", true); return; }
     if (end < start) { toast("结束日期不能早于开始日期", true); return; }
     const payload = { title, start_date: start, end_date: end };
+    if ($id("mYgIdentity")) payload.identity = $id("mYgIdentity").value.trim();
     let rows;
     if (t) {
       rows = await db(cloud.database.from("year_goals").update(payload).eq("id", t.id).select());
@@ -4841,6 +4892,24 @@ function guideOnEnter() {
   if (now - lastGuideAt < 4 * 60 * 1000) return; // 4 分钟内不重复打扰
   lastGuideAt = now;
   sayCompanion(GUIDE_LINES[Math.floor(Math.random() * GUIDE_LINES.length)]);
+}
+/* 有过期 DDL 时的非评判提示：只描述事实 + 正常化 + 最小一步，不催不评判，每天最多一次 */
+function maybeOverdueNudge() {
+  const today = localDateStr(new Date());
+  try { if (localStorage.getItem("pomo_overdue_nudge") === today) return; } catch (e) {}
+  const overdue = tasks.filter(t => t.deadline && t.deadline < today);
+  if (!overdue.length) return;
+  try { localStorage.setItem("pomo_overdue_nudge", today); } catch (e) {}
+  sayCompanion("有 " + overdue.length + " 件事在等你。卡住很正常，不是你的问题——挑最小的一步重新开始就好 🌱", 6500);
+}
+/* 无愧休息（work hard play hard）：当日专注满 2 小时，明确告诉用户「现在去玩是赚来的」 */
+function maybePlayHardNudge() {
+  const today = localDateStr(new Date());
+  try { if (localStorage.getItem("pomo_play_nudge") === today) return; } catch (e) {}
+  const todaySec = sessions.filter(x => x.session_date === today).reduce((a, b) => a + (b.duration_seconds || 0), 0);
+  if (todaySec < 7200) return;
+  try { localStorage.setItem("pomo_play_nudge", today); } catch (e) {}
+  sayCompanion("今天已专注 " + Math.round(todaySec / 60) + " 分钟——现在去玩也完全心安理得，这是你赚来的 🌿", 6500);
 }
 
 /* ============ 启动 ============ */
