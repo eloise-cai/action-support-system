@@ -1752,6 +1752,22 @@ body.theme-retro {
   color: var(--text); font-size: 13.5px; padding: 9px 11px; line-height: 1.6;
 }
 
+/* ---------- 拖延拆解（CBT） ---------- */
+.cbt-box {
+  background: rgba(122, 165, 255, .06); border: 1px solid rgba(122, 165, 255, .25);
+  border-radius: 12px; padding: 10px 14px; margin-top: 12px;
+}
+.cbt-box summary { cursor: pointer; font-size: 13.5px; font-weight: 600; color: var(--text); user-select: none; }
+.cbt-hint { font-size: 11.5px; color: var(--text-sub); line-height: 1.7; margin: 8px 0 2px; }
+.cbt-ta { min-height: 52px; margin-top: 4px; font-size: 13px; }
+.cbt-diff-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 4px; }
+.cbt-diff-row .modal-label { margin-top: 8px; }
+.cbt-sel {
+  width: 100%; margin-top: 4px; background: var(--bg-soft); border: 1px solid var(--border);
+  border-radius: 8px; color: var(--text); font-size: 13px; padding: 8px 10px;
+}
+@media (max-width: 520px) { .cbt-diff-row { grid-template-columns: 1fr; } }
+
 /* ---------- 自定义分类：管理列表 ---------- */
 .cat-manage { display: flex; flex-direction: column; gap: 6px; width: 100%; }
 .cat-mrow { display: flex; gap: 6px; align-items: center; }

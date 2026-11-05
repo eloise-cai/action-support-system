@@ -734,16 +734,31 @@ function renderLayer() {
   /* 主任务的执行计划（子任务有，主任务也该有）：默认有内容就展开 */
   const planWrap = $id("layerPlanWrap");
   if (planWrap) {
+    const cbt = cbtParse(task);
     planWrap.innerHTML = '<details class="task-plan"' + (task.plan ? " open" : "") + ">" +
       '<summary>📋 执行计划 / 要点</summary>' +
       '<textarea id="layerPlanText" placeholder="写下这个任务的整体计划、要点或备注…">' + esc(task.plan || "") + "</textarea>" +
       '<button class="btn ghost small" id="layerPlanSave" style="margin-top:6px">保存计划</button>' +
-      "</details>";
+      "</details>" +
+      cbtFormHtml(cbt, !cbtIsEmpty(cbt) && (task.archived || taskSubs(task.id).every(s => s.done))) +
+      '<button class="btn ghost small" id="layerCbtSave" style="margin-top:6px">保存拆解</button>';
     bind("layerPlanSave", "click", async () => {
       const plan = $id("layerPlanText").value;
       const rows = await db(cloud.database.from("tasks").update({ plan }).eq("id", task.id).select());
       if (rows && rows[0]) Object.assign(task, rows[0]);
       toast("计划已保存");
+    });
+    bind("layerCbtSave", "click", async () => {
+      const cbtJson = JSON.stringify(cbtRead());
+      const rows = await db(cloud.database.from("tasks").update({ cbt: cbtJson }).eq("id", task.id).select());
+      if (rows && rows[0]) Object.assign(task, rows[0]);
+      const c = cbtParse(task);
+      if (c.diffExp && c.diffAct) {
+        const e = +c.diffExp, a = +c.diffAct;
+        if (a < e) toast("实际难度 " + a + " 低于预计的 " + e + " —— 又一次证明它没想象中难 💪");
+        else if (a > e) toast("实际难度 " + a + " 高于预计的 " + e + "，下次可以拆得更小再开始");
+        else toast("拆解已保存（预计 = 实际 = " + a + "，预估很准）");
+      } else toast("拆解已保存");
     });
   }
   const grid = $id("layerGrid");
@@ -3990,7 +4005,47 @@ async function deleteTask(id) {
   return true;
 }
 
+/* ============ 拖延拆解（CBT） ============
+   参考《拖延心理学》与 CBT 行为实验思路：
+   ① 目的 / 好处 → 把「应该做」翻译成「我想得到什么」，激活内在动机；
+   ② 替代活动 → 暴露逃避本能（同样是逃避，至少是有意识的选择）；
+   ③ 预计难度 vs 实际难度 → 行为实验：做完后对照，校正「灾难化想象」。
+   数据存 tasks.cbt（JSON 字符串），弹窗和分层页共用同一套表单。 */
+const CBT_DIFFS = ["", "1 · 基本没难度", "2 · 有点挑战", "3 · 中等", "4 · 很难", "5 · 难到想逃"];
+function cbtParse(task) {
+  try {
+    const o = JSON.parse(task.cbt || "{}");
+    return { purpose: o.purpose || "", benefit: o.benefit || "", alternative: o.alternative || "", diffExp: o.diffExp || "", diffAct: o.diffAct || "" };
+  } catch (e) { return { purpose: "", benefit: "", alternative: "", diffExp: "", diffAct: "" }; }
+}
+function cbtFormHtml(cbt, open) {
+  const sel = (id, val) => {
+    let h = '<select id="' + id + '" class="modal-input cbt-sel"><option value="">—</option>';
+    for (let i = 1; i < CBT_DIFFS.length; i++) h += '<option value="' + i + '"' + (String(val) === String(i) ? " selected" : "") + ">" + CBT_DIFFS[i] + "</option>";
+    return h + "</select>";
+  };
+  return '<details class="cbt-box"' + (open ? " open" : "") + ">" +
+    "<summary>🧠 拖延拆解（开始前先问自己）</summary>" +
+    '<p class="cbt-hint">拖延往往是「情绪逃避」而不是「懒」：写下动机、看清替代行为，做完后回来对比难度，你会发现它通常没想象中可怕。</p>' +
+    '<label class="modal-label">完成这件事的目的是什么？</label>' +
+    '<textarea id="mCbtPurpose" class="modal-textarea cbt-ta" placeholder="例：整理好因子分类，之后复盘时能快速定位问题…">' + esc(cbt.purpose) + "</textarea>" +
+    '<label class="modal-label">完成它能获得什么好处？</label>' +
+    '<textarea id="mCbtBenefit" class="modal-textarea cbt-ta" placeholder="例：少走弯路 + 成就感，做完就能安心休息…">' + esc(cbt.benefit) + "</textarea>" +
+    '<label class="modal-label">如果不做，同样的时间你想拿去做什么替代？（看清你的逃避去向）</label>' +
+    '<textarea id="mCbtAlt" class="modal-textarea cbt-ta" placeholder="例：刷短视频 / 整理桌面 / 先去做简单任务…">' + esc(cbt.alternative) + "</textarea>" +
+    '<div class="cbt-diff-row">' +
+    '<div><label class="modal-label">我认为这件事的难度</label>' + sel("mCbtDiffExp", cbt.diffExp) + "</div>" +
+    '<div><label class="modal-label">实际操作后的难度（做完回来填）</label>' + sel("mCbtDiffAct", cbt.diffAct) + "</div>" +
+    "</div></details>";
+}
+function cbtRead() {
+  const g = id => { const el = $id(id); return el ? el.value : ""; };
+  return { purpose: g("mCbtPurpose"), benefit: g("mCbtBenefit"), alternative: g("mCbtAlt"), diffExp: g("mCbtDiffExp"), diffAct: g("mCbtDiffAct") };
+}
+function cbtIsEmpty(c) { return !c.purpose && !c.benefit && !c.alternative && !c.diffExp && !c.diffAct; }
+
 function renameTask(task) {
+  const cbt0 = cbtParse(task);
   openModal(
     "<h3>修改任务</h3>" +
     '<label class="modal-label">任务标题</label>' +
@@ -4001,6 +4056,7 @@ function renameTask(task) {
     levelPickerHtml(task.level) +
     '<label class="modal-label">任务规划（整体怎么做、要点备忘）</label>' +
     '<textarea id="mTaskPlan" class="modal-textarea" placeholder="写下执行计划、要点或备注…">' + esc(task.plan || "") + "</textarea>" +
+    cbtFormHtml(cbt0, !cbtIsEmpty(cbt0)) +
     '<div class="modal-actions">' +
     '<button class="btn ghost" data-close="1">取消</button>' +
     '<button class="btn primary" id="mRenSave">保存</button>' +
@@ -4014,7 +4070,11 @@ function renameTask(task) {
   const save = async () => {
     const title = input.value.trim();
     if (!title) { toast("请输入任务标题", true); return; }
-    const patch = { title, level: getLevel(), category: getCat() || null, plan: $id("mTaskPlan") ? $id("mTaskPlan").value : (task.plan || "") };
+    const patch = {
+      title, level: getLevel(), category: getCat() || null,
+      plan: $id("mTaskPlan") ? $id("mTaskPlan").value : (task.plan || ""),
+      cbt: $id("mCbtPurpose") ? JSON.stringify(cbtRead()) : (task.cbt || "")
+    };
     const rows = await db(cloud.database.from("tasks").update(patch).eq("id", task.id).select());
     if (blocked(rows)) { toast("保存失败，请重新登录后再试", true); return; }
     Object.assign(task, patch);
