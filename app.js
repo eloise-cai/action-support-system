@@ -65,6 +65,13 @@ let cardsMode = "today";
 try { cardsMode = localStorage.getItem("pomo_cards_mode") === "all" ? "all" : "today"; } catch (e) {}
 let pickSkip = new Set(); // 「换一个」时暂时跳过的子任务
 
+/* 自选今日三件事：{ "2026-11-08": [subtaskId,...] }，存 user_profiles.today_picks */
+let todayPicks = {};
+/* 最近一次「今日三件事」界面上实际出现的子任务 id（结算加成用，取渲染时快照，
+   因为完成后子任务会从推荐里消失，事后再算就算不出来了） */
+let todayShownIds = [];
+let shelvedOpen = false; // 「暂时不想做」盒子是否展开
+
 function $id(id) { return document.getElementById(id); }
 /* 静态页可能被浏览器缓存旧版 HTML：元素缺失时 bind 不报错，页面其余功能照常 */
 function bind(id, evt, fn) { const el = $id(id); if (el) el.addEventListener(evt, fn); }
@@ -217,7 +224,7 @@ async function boot() {
   showApp();
   $id("userLabel").textContent = "已登录";
   await loadAll();
-  ensureUserProfile(); // 用户唯一 ID（异步，不阻塞）
+  profileReady = ensureUserProfile(); // 用户唯一 ID（异步，不阻塞启动）
   restoreTimer();
   restoreRest(); // 休息中途刷新/锁屏回来，接着计时
   renderAll();
@@ -228,6 +235,7 @@ async function boot() {
 
 /* 用户 ID：首次登录自动生成，之后可自行改成昵称（全局唯一，被占用则改不了） */
 let profileId = null;
+let profileReady = null; // ensureUserProfile 的 promise，早于它完成时保存偏好要等一下
 let moneyBase = { save: 0, invest: 0 }; // 储蓄/投资基础金额（记录流水之外的存量，可自行修改）
 let moneyBreakdown = { save: [], invest: [] }; // 储蓄/投资的细分项目 [{ name, amount }]（环形图用）
 async function ensureUserProfile() {
@@ -241,6 +249,7 @@ async function ensureUserProfile() {
       try { moneyBreakdown.save = JSON.parse(got.data[0].save_items || "[]") || []; } catch (e) { moneyBreakdown.save = []; }
       try { moneyBreakdown.invest = JSON.parse(got.data[0].invest_items || "[]") || []; } catch (e) { moneyBreakdown.invest = []; }
       try { customCats = JSON.parse(got.data[0].custom_categories || "[]") || []; } catch (e) { customCats = []; }
+      try { todayPicks = JSON.parse(got.data[0].today_picks || "{}") || {}; } catch (e) { todayPicks = {}; }
       if (got.data[0].theme) applyTheme(got.data[0].theme); // 恢复上次用的皮肤
     } else if (got && !got.error) {
       for (let i = 0; i < 5 && !userCode; i++) {
@@ -358,12 +367,54 @@ function subScore(s) {
   const t = tasks.find(x => x.id === s.task_id);
   return (w[t ? t.level : "mid"] || 2) * 10 + (subSeconds(s.id) > 0 ? 3 : 0) + (s.est_minutes ? Math.max(0, 6 - Math.min(6, s.est_minutes / 10)) : 0);
 }
+/* 「暂时不想做」里的任务：不参与推荐、不进分层卡片，但统计与月历照旧算 */
+function isShelvedTask(taskId) {
+  const t = tasks.find(x => x.id === taskId);
+  return !!(t && t.shelved);
+}
+function activeSubtasks() {
+  return subtasks.filter(s => !isShelvedTask(s.task_id));
+}
+
+/* 自选今日三件事（每天一份，跨天自动失效回落到自动推荐） */
+function manualPickIds() {
+  const v = todayPicks[localDateStr(new Date())];
+  return Array.isArray(v) && v.length ? v : null;
+}
+function manualPickSubs() {
+  const ids = manualPickIds();
+  if (!ids) return null;
+  // 收起（暂时不想做）的任务不该出现在今日三件事里，即使之前手动挑过
+  return ids.map(id => subtasks.find(s => s.id === id)).filter(s => s && !isShelvedTask(s.task_id));
+}
+function isTodayPick(id) { return todayShownIds.indexOf(id) >= 0; }
+async function persistTodayPicks(ids) {
+  const next = Object.assign({}, todayPicks);
+  if (ids && ids.length) next[localDateStr(new Date())] = ids;
+  else delete next[localDateStr(new Date())];
+  todayPicks = next;
+  if (!profileId && profileReady) { try { await profileReady; } catch (e) {} }
+  if (!profileId) return;
+  const res = await db(cloud.database.from("user_profiles").update({ today_picks: JSON.stringify(next) }).eq("id", profileId).select());
+  if (res && res[0]) {
+    try { todayPicks = JSON.parse(res[0].today_picks || "{}") || next; } catch (e) { /* 用本地值 */ }
+  }
+}
+
 function computePicks() {
-  const undone = subtasks.filter(s => !s.done && !pickSkip.has(s.id));
+  const undone = activeSubtasks().filter(s => !s.done && !pickSkip.has(s.id));
   return undone.sort((a, b) => subScore(b) - subScore(a) || a.id - b.id).slice(0, 3);
 }
+/* 今天真正展示的三件事：自己挑的优先，没挑就用自动推荐 */
+function currentPicks() {
+  const manual = manualPickSubs();
+  if (manual) return manual;
+  let picks = computePicks();
+  if (!picks.length && activeSubtasks().some(s => !s.done)) { pickSkip.clear(); picks = computePicks(); }
+  return picks;
+}
 function pickBestSub() {
-  const undone = subtasks.filter(s => !s.done);
+  const undone = activeSubtasks().filter(s => !s.done);
   if (!undone.length) return null;
   return undone.sort((a, b) => subScore(b) - subScore(a) || a.id - b.id)[0];
 }
@@ -383,18 +434,32 @@ function todayCardHtml(s) {
     '</div>').join("") : '<div class="subtask-empty">暂无子子任务</div>';
   const meta = (task ? cat.icon + " " + esc(task.title) + " · " : "") + doneCnt + "/" + its.length + " 子子任务 · 已用 " + fmtDur(subSeconds(s.id)) +
     (s.est_minutes ? ' · 建议 ' + s.est_minutes + ' 分钟' : "");
-  return '<div class="task-card" style="--card-color:' + lv.bg + ';--card-border:' + lv.border + ';--dot-color:' + lv.color + '">' +
+  const btns = s.done
+    ? '<div class="today-btns">' +
+      '<button class="btn ghost" disabled>✓ 已拿下</button>' +
+      (manualPickIds() ? '<button class="btn ghost" data-pickremove="' + s.id + '">换一件</button>' : '') +
+      '</div>'
+    : '<div class="today-btns">' +
+      '<button class="btn primary" data-startsub="' + s.id + '">▶ 开始专注</button>' +
+      '<button class="btn ghost" data-swapsub="' + s.id + '">换一个</button>' +
+      '</div>';
+  return '<div class="task-card' + (s.done ? " done-card" : "") + '" style="--card-color:' + lv.bg + ';--card-border:' + lv.border + ';--dot-color:' + lv.color + '">' +
     '<div class="task-head"><span class="cat-badge" title="' + cat.label + '">' + cat.icon + '</span>' +
     '<span class="task-title layer-card-title" data-submodal="' + s.id + '" title="进入规划与番茄钟">' + esc(s.title) + '</span>' +
+    (s.done ? "" : '<span class="bonus-badge" title="完成后有额外积分">' + bonusBadge(s) + '</span>') +
     '<button class="task-edit" data-renamesub="' + s.id + '" title="修改名称">✎</button>' +
     '<button class="task-del" data-delsub="' + s.id + '" title="删除">✕</button>' +
     '</div>' +
     '<div class="task-meta">' + meta + '</div>' +
     '<div class="sub-grid">' + chipHtml + '</div>' +
-    '<div class="today-btns">' +
-    '<button class="btn primary" data-startsub="' + s.id + '">▶ 开始专注</button>' +
-    '<button class="btn ghost" data-swapsub="' + s.id + '">换一个</button>' +
-    '</div></div>';
+    btns + '</div>';
+}
+
+/* 这张卡完成时能拿多少额外分（只用于卡片上的预告标签） */
+function bonusBadge(s) {
+  const t = tasks.find(x => x.id === s.task_id);
+  if (t && t.revived_at) return "🎆 双倍";
+  return "🎆 +50%";
 }
 
 function renderCards() {
@@ -403,22 +468,32 @@ function renderCards() {
   const mT = $id("modeTodayBtn"), mA = $id("modeAllBtn");
   if (mT) mT.classList.toggle("active", cardsMode === "today");
   if (mA) mA.classList.toggle("active", cardsMode === "all");
+  const pBtn = $id("pickBtn");
+  if (pBtn) pBtn.classList.toggle("hidden", cardsMode !== "today");
   if (!tasks.length) {
     grid.innerHTML = '<div class="cards-empty">还没有任务，点右上角「新建任务」或用上方「一句话记事」开始吧 🍅</div>' + settledSectionHtml();
     return;
   }
   if (cardsMode === "today") {
-    let picks = computePicks();
-    if (!picks.length && subtasks.some(s => !s.done)) { pickSkip.clear(); picks = computePicks(); }
+    const manual = manualPickIds();
+    const picks = currentPicks();
+    todayShownIds = picks.map(s => s.id); // 加成结算用快照：完成后推荐会变，事后再算就算不出来
     if (!picks.length) {
-      grid.innerHTML = '<div class="cards-empty">' + (subtasks.some(s => !s.done) ? "没有可推荐的待办" : "所有子任务都完成了，好好休息 🎉") + "</div>";
-    } else {
-      grid.innerHTML = '<div class="today-hint">今天先做这 ' + picks.length + ' 件就好，别的都不用看 👇</div><div class="cards-grid today-grid">' +
-        picks.map(s => todayCardHtml(s)).join("") + "</div>";
+      grid.innerHTML = '<div class="cards-empty">' + (activeSubtasks().some(s => !s.done) ? "没有可推荐的待办" : "所有子任务都完成了，好好休息 🎉") + "</div>";
+      return;
     }
+    const doneN = picks.filter(s => s.done).length;
+    const hint = manual
+      ? "这是你自己挑的 " + picks.length + " 件（已拿下 " + doneN + " 件），别的都不用看 👇"
+      : "今天先做这 " + picks.length + " 件就好，别的都不用看。不满意可以点「自选」换 👇";
+    const slot = manual && picks.length < 3 ? '<button class="pick-slot" data-openpick="1">＋ 再挑一件</button>' : "";
+    grid.innerHTML = '<div class="today-hint">' + hint + '</div><div class="cards-grid today-grid">' +
+      picks.map(s => todayCardHtml(s)).join("") + slot + "</div>";
     return;
   }
-  grid.innerHTML = tasks.map(t => {
+  const live = tasks.filter(t => !t.shelved);
+  const cardsHtml = live.length
+    ? live.map(t => {
     const subs = taskSubs(t.id);
     const allDone = subs.length > 0 && subs.every(s => s.done);
     const lv = LEVELS[t.level] || LEVELS.mid;
@@ -437,7 +512,12 @@ function renderCards() {
       '<div class="task-head">' +
       '<span class="cat-badge" title="' + cat.label + '">' + cat.icon + '</span>' +
       '<span class="task-title task-title-edit" data-renametask="' + t.id + '" title="点击修改任务名称">' + esc(t.title) + '</span>' +
+      '<span class="task-order">' +
+      '<button class="task-mv" data-mvup="' + t.id + '" title="上移">▲</button>' +
+      '<button class="task-mv" data-mvdown="' + t.id + '" title="下移">▼</button>' +
+      '</span>' +
       (allDone ? '<button class="task-settle" data-settle="' + t.id + '" title="纳入已沉淀任务">📦</button>' : "") +
+      '<button class="task-shelve" data-shelve="' + t.id + '" title="暂时不想做，收起来">🧊</button>' +
       '<button class="task-layer" data-layer="' + t.id + '" title="进入分层页">›</button>' +
       '<button class="task-del" data-deltask="' + t.id + '" title="删除任务">✕</button>' +
       '</div>' +
@@ -447,11 +527,141 @@ function renderCards() {
       '<input placeholder="添加子任务，回车确认" data-addsub="' + t.id + '">' +
       '<button data-addsubbtn="' + t.id + '">＋</button>' +
       '</div></div>';
-  }).join("") + settledSectionHtml();
+  }).join("")
+    : '<div class="cards-empty">任务都收进「暂时不想做」了。想看的时候随时取回，不取回也没关系 🧊</div>';
+  grid.innerHTML = cardsHtml + shelvedSectionHtml() + settledSectionHtml();
+}
+
+/* ============ 收起 / 取出 / 排序 / 自选 ============ */
+
+/* 收起：不扣分、不追问、不提醒。只是把它从视野里拿走 */
+async function shelveTask(id) {
+  const t = tasks.find(x => x.id === id);
+  if (!t) return;
+  const rows = await db(cloud.database.from("tasks").update({ shelved: true }).eq("id", id).select());
+  if (!rows || !rows.length) return;
+  Object.assign(t, rows[0]);
+  renderAll();
+  toast("已收进「暂时不想做」· 想拿的时候随时取回来");
+}
+
+/* 取出：+3 分，并打上 revived_at —— 之后完成这个任务算双倍 */
+async function unshelveTask(id) {
+  const t = tasks.find(x => x.id === id);
+  if (!t) return;
+  const rows = await db(cloud.database.from("tasks").update({ shelved: false, revived_at: new Date().toISOString() }).eq("id", id).select());
+  if (!rows || !rows.length) return;
+  Object.assign(t, rows[0]);
+  renderAll();
+  await awardPoints(3, "从「暂时不想做」取回：" + t.title, "task", t.id, true);
+  bonusBurst({ title: "取回来了", sub: "愿意再看一眼，本身就算数", points: 3, level: 1 });
+}
+
+/* 排序：只动活跃任务，按新顺序把 sort_order 重排成 1..n（只写真正变化的行） */
+async function moveTask(id, dir) {
+  const live = tasks.filter(t => !t.shelved);
+  const i = live.findIndex(t => t.id === id);
+  const j = i + dir;
+  if (i < 0 || j < 0 || j >= live.length) return;
+  const next = live.slice();
+  const tmp = next[i]; next[i] = next[j]; next[j] = tmp;
+  for (let k = 0; k < next.length; k++) {
+    const want = k + 1;
+    if ((next[k].sort_order || 0) !== want) {
+      const rows = await db(cloud.database.from("tasks").update({ sort_order: want }).eq("id", next[k].id).select());
+      if (rows && rows[0]) Object.assign(next[k], rows[0]); else next[k].sort_order = want;
+    }
+  }
+  tasks.sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0) || a.id - b.id);
+  renderCards();
+}
+
+/* 自选今日三件事：最多三件，选满后自动替换最早选的那件（不报错，不给阻力） */
+function openPickModal() {
+  let chosen = (manualPickIds() || []).slice();
+  const subs = activeSubtasks().filter(s => !s.done);
+  if (!subs.length) { toast("现在没有待办可挑，先去加个子任务吧", true); return; }
+  const groups = tasks.filter(t => !t.shelved)
+    .map(t => ({ t, list: subs.filter(s => s.task_id === t.id) }))
+    .filter(g => g.list.length);
+
+  function listHtml() {
+    return groups.map(g =>
+      '<div class="pick-group"><div class="pick-group-t">' + catOf(g.t).icon + " " + esc(g.t.title) + "</div>" +
+      g.list.map(s => {
+        const at = chosen.indexOf(s.id);
+        return '<button class="pick-item' + (at >= 0 ? " is-on" : "") + '" data-pickid="' + s.id + '">' +
+          '<span class="pick-box">' + (at >= 0 ? "✓" : "") + "</span>" +
+          '<span class="pick-name">' + esc(s.title) + "</span>" +
+          '<span class="pick-no">' + (at >= 0 ? at + 1 : "") + "</span>" +
+          "</button>";
+      }).join("") + "</div>").join("");
+  }
+  function paint() {
+    const box = $id("pickList");
+    if (box) box.innerHTML = listHtml();
+    const cnt = $id("pickCount");
+    if (cnt) cnt.textContent = chosen.length;
+    const save = $id("pickSave");
+    if (save) save.textContent = chosen.length ? "就用这 " + chosen.length + " 件" : "先不选，用自动推荐";
+  }
+
+  openModal(
+    '<div class="modal-head"><h3>自选今日三件事</h3>' +
+    '<p class="modal-desc">挑今天愿意做的几件，最多三件。挑完之后界面上就只剩这些，别的都不用看。已经挑了 <b id="pickCount">' + chosen.length + '</b> 件；选满三件后再点，会自动替换最早选的那件。</p></div>' +
+    '<div id="pickList" class="pick-list">' + listHtml() + "</div>" +
+    '<div class="modal-actions" style="margin-top:14px">' +
+    '<button id="pickSave" class="btn primary block">' + (chosen.length ? "就用这 " + chosen.length + " 件" : "先不选，用自动推荐") + "</button>" +
+    '<button id="pickAuto" class="btn ghost block" style="margin-top:8px">交回自动推荐</button>' +
+    "</div>",
+    null
+  );
+
+  bind("pickList", "click", (e) => {
+    const b = e.target.closest("[data-pickid]");
+    if (!b) return;
+    const id = +b.dataset.pickid;
+    const at = chosen.indexOf(id);
+    if (at >= 0) chosen.splice(at, 1);
+    else { if (chosen.length >= 3) chosen.shift(); chosen.push(id); }
+    paint();
+  });
+  bind("pickSave", "click", async () => {
+    await persistTodayPicks(chosen);
+    closeModal();
+    renderCards();
+    toast(chosen.length ? "今天只做这几件，其余先放着" : "已交回自动推荐");
+  });
+  bind("pickAuto", "click", async () => {
+    await persistTodayPicks([]);
+    closeModal();
+    renderCards();
+    toast("已交回自动推荐");
+  });
 }
 
 // 卡片区事件委托（任务级 + 今日三件事卡片 + 子任务级共用一条链，避免重复弹窗）
 bind("cardsGrid", "click", async (e) => {
+  const shelvedToggle = e.target.closest("[data-shelvedtoggle]");
+  if (shelvedToggle) { shelvedOpen = !shelvedOpen; renderCards(); return; }
+  const unshelveBtn = e.target.closest("[data-unshelve]");
+  if (unshelveBtn) { await unshelveTask(+unshelveBtn.dataset.unshelve); return; }
+  const shelveBtn = e.target.closest("[data-shelve]");
+  if (shelveBtn) { await shelveTask(+shelveBtn.dataset.shelve); return; }
+  const mvUp = e.target.closest("[data-mvup]");
+  if (mvUp) { await moveTask(+mvUp.dataset.mvup, -1); return; }
+  const mvDown = e.target.closest("[data-mvdown]");
+  if (mvDown) { await moveTask(+mvDown.dataset.mvdown, 1); return; }
+  const pickOpen = e.target.closest("[data-openpick]");
+  if (pickOpen) { openPickModal(); return; }
+  const pickRemove = e.target.closest("[data-pickremove]");
+  if (pickRemove) {
+    const left = (manualPickIds() || []).filter(x => x !== +pickRemove.dataset.pickremove);
+    await persistTodayPicks(left);
+    renderCards();
+    openPickModal();
+    return;
+  }
   const settledBtn = e.target.closest("#settledToggle");
   if (settledBtn) {
     const l = $id("settledList");
@@ -524,6 +734,8 @@ bind("cardsGrid", "click", async (e) => {
       return;
     }
     if (swapBtn) {
+      // 自选模式下「换一个」= 重新挑；自动模式下只跳过这一个
+      if (manualPickIds()) { openPickModal(); return; }
       pickSkip.add(+swapBtn.dataset.swapsub);
       renderCards();
       return;
@@ -536,13 +748,15 @@ bind("cardsGrid", "click", async (e) => {
       if (!s) return;
       const nd = !s.done;
       const wasDone = s.done;
+      const wasTodayPick = isTodayPick(id); // 必须在改成 done 之前取快照
       const wasAllDone = (() => { const ss = taskSubs(s.task_id); return ss.length > 0 && ss.every(x => x.done); })();
       const rows = await db(cloud.database.from("subtasks").update({ done: nd, done_at: nd ? new Date().toISOString() : null }).eq("id", id).select());
       if (rows && rows.length) Object.assign(s, rows[0]);
       renderAll();
-      await awardOnSubtaskToggle(s, wasDone, wasAllDone);
+      const gain = await awardOnSubtaskToggle(s, wasDone, wasAllDone, wasTodayPick);
       if (nd) {
-        celebrate();
+        if (gain && gain.extra > 0) bonusBurst({ title: "额外积分！", sub: gain.label, points: gain.extra, level: 2 });
+        else celebrate();
         sayCompanion("恭喜你！变得更棒啦！");
         const subs = taskSubs(s.task_id);
         if (subs.length && subs.every(x => x.done)) await offerSettle(s.task_id);
@@ -628,6 +842,7 @@ bind("doNowBtn", "click", () => {
 
 bind("modeTodayBtn", "click", () => { cardsMode = "today"; try { localStorage.setItem("pomo_cards_mode", "today"); } catch (e) {} renderCards(); });
 bind("modeAllBtn", "click", () => { cardsMode = "all"; try { localStorage.setItem("pomo_cards_mode", "all"); } catch (e) {} renderCards(); });
+bind("pickBtn", "click", () => { openPickModal(); });
 
 /* 一句话捕获：解析「任务：子任务 15分钟」/「背单词15分钟」/「整理半小时」 */
 function parseCapture(text) {
@@ -703,6 +918,61 @@ function celebrate() {
       g.gain.exponentialRampToValueAtTime(0.16, t0 + 0.02);
       g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.3);
       o.start(t0); o.stop(t0 + 0.32);
+    });
+  } catch (e) {}
+}
+
+/* 额外积分弹层：烟花绽放 + 「额外积分！」（参考游戏领奖界面）
+   level 1 = 轻（取回任务 +3），level 2 = 重（完成加成，多组烟花 + 更大的字） */
+function bonusBurst(opts) {
+  const o = opts || {};
+  const lvl = o.level === 1 ? 1 : 2;
+  try {
+    const layer = document.createElement("div");
+    layer.className = "bonus-layer lv" + lvl;
+    const colors = ["#ffd76b", "#ff8f93", "#8ab4ff", "#5ee0b5", "#c9a2ff", "#ffa94d"];
+    const bursts = lvl === 2 ? 4 : 2;
+    for (let b = 0; b < bursts; b++) {
+      const fw = document.createElement("div");
+      fw.className = "fw";
+      fw.style.left = (14 + Math.random() * 72) + "%";
+      fw.style.top = (14 + Math.random() * 48) + "%";
+      fw.style.animationDelay = (b * 0.2) + "s";
+      for (let i = 0; i < 14; i++) {
+        const d = document.createElement("i");
+        d.style.setProperty("--ang", ((360 / 14) * i + Math.random() * 10) + "deg");
+        d.style.setProperty("--dist", (44 + Math.random() * 38) + "px");
+        d.style.background = colors[(i + b) % colors.length];
+        d.style.animationDelay = (b * 0.2) + "s";
+        fw.appendChild(d);
+      }
+      layer.appendChild(fw);
+    }
+    const card = document.createElement("div");
+    card.className = "bonus-card";
+    card.innerHTML = '<div class="bonus-title">' + esc(o.title || "额外积分！") + "</div>" +
+      (o.sub ? '<div class="bonus-sub">' + esc(o.sub) + "</div>" : "") +
+      '<div class="bonus-pts">+' + (o.points || 0) + "</div>";
+    layer.appendChild(card);
+    document.body.appendChild(layer);
+    setTimeout(() => layer.remove(), lvl === 2 ? 2500 : 1900);
+  } catch (e) {}
+  try {
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    if (!Ctx) return;
+    const ctx = new Ctx();
+    const notes = lvl === 2 ? [523, 659, 784, 1047] : [659, 880];
+    notes.forEach((f, i) => {
+      const t0 = ctx.currentTime + i * 0.09;
+      [["triangle", 1], ["sine", 2]].forEach(([type, mul]) => {
+        const o1 = ctx.createOscillator(), g = ctx.createGain();
+        o1.type = type; o1.frequency.value = f * mul;
+        o1.connect(g); g.connect(ctx.destination);
+        g.gain.setValueAtTime(0.0001, t0);
+        g.gain.exponentialRampToValueAtTime(0.12 / mul, t0 + 0.015);
+        g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.35);
+        o1.start(t0); o1.stop(t0 + 0.37);
+      });
     });
   } catch (e) {}
 }
@@ -791,7 +1061,7 @@ function subtaskCardHtml(s, showTask) {
 function renderLayers() {
   const grid = $id("layersGrid");
   const kw = ($id("layersSearch").value || "").trim().toLowerCase();
-  let list = subtasks.slice();
+  let list = activeSubtasks().slice();
   if (kw) list = list.filter(s => s.title.toLowerCase().includes(kw));
   if (!list.length) {
     grid.innerHTML = '<div class="cards-empty">' + (subtasks.length ? "没有匹配的卡片" : "还没有子任务卡片，先去任务列表添加子任务") + "</div>";
@@ -1383,15 +1653,21 @@ function openSubtaskModal(sub, autoStart, skipRitual) {
   bind("mDoneBtn", "click", async () => {
     const nd = !sub.done;
     const wasDone = sub.done;
+    const wasTodayPick = isTodayPick(sub.id); // 改成 done 之前取快照
     const wasAllDone = (() => { const ss = taskSubs(sub.task_id); return ss.length > 0 && ss.every(x => x.done); })();
     const rows = await db(cloud.database.from("subtasks").update({ done: nd, done_at: nd ? new Date().toISOString() : null }).eq("id", sub.id).select());
     if (rows && rows.length) Object.assign(sub, rows[0]);
     if (timer && timer.subtaskId === sub.id) stopTimer(true);
     closeModal();
     renderAll();
-    await awardOnSubtaskToggle(sub, wasDone, wasAllDone);
+    const gain = await awardOnSubtaskToggle(sub, wasDone, wasAllDone, wasTodayPick);
     if (nd) {
-      celebrate(); sayCompanion("恭喜你！变得更棒啦！"); toast("子任务已完成 ✓");
+      if (gain && gain.extra > 0) {
+        bonusBurst({ title: "额外积分！", sub: gain.label, points: gain.extra, level: 2 });
+        sayCompanion("额外奖励到手！");
+      } else {
+        celebrate(); sayCompanion("恭喜你！变得更棒啦！"); toast("子任务已完成 ✓");
+      }
       const subs2 = taskSubs(sub.task_id);
       if (subs2.length && subs2.every(x => x.done)) await offerSettle(sub.task_id);
     }
@@ -2017,22 +2293,45 @@ async function awardPoints(delta, reason, refType, refId, quiet) {
   } catch (e) { /* db() 已提示 */ }
 }
 
-/* 子任务勾选/取消时结算积分（含「整任务清空」奖励与扣回） */
-async function awardOnSubtaskToggle(sub, wasDone, wasAllDone) {
+/* 完成时的额外加成：从「暂时不想做」取回过的任务双倍（+10），
+   今日三件事里完成的 +50%（+5）。两者都只是加法，不做叠乘。 */
+function completionBonus(sub, wasTodayPick) {
+  const t = tasks.find(x => x.id === sub.task_id);
+  if (t && t.revived_at) return { extra: 10, label: "从「暂时不想做」取回后完成 · 双倍积分" };
+  if (wasTodayPick) return { extra: 5, label: "今日三件事加成 · 额外 50%" };
+  return { extra: 0, label: "" };
+}
+
+/* 子任务勾选/取消时结算积分（含「整任务清空」奖励、额外加成与扣回）
+   额外分记在 subtasks.bonus_applied，取消完成时按它原额扣回，不会刷分 */
+async function awardOnSubtaskToggle(sub, wasDone, wasAllDone, wasTodayPick) {
   if (!wasDone) {
-    await awardPoints(10, "完成子任务：" + sub.title, "subtask", sub.id);
+    const bonus = completionBonus(sub, wasTodayPick);
+    await awardPoints(10, "完成子任务：" + sub.title, "subtask", sub.id, bonus.extra > 0);
+    if (bonus.extra > 0) {
+      await awardPoints(bonus.extra, "🎆 " + bonus.label + "：" + sub.title, "subtask", sub.id, true);
+      const bRows = await db(cloud.database.from("subtasks").update({ bonus_applied: bonus.extra }).eq("id", sub.id).select());
+      if (bRows && bRows[0]) Object.assign(sub, bRows[0]); else sub.bonus_applied = bonus.extra;
+    }
     const subs = taskSubs(sub.task_id);
     if (subs.length && subs.every(x => x.done)) {
       const t = tasks.find(x => x.id === sub.task_id);
-      await awardPoints(5, "清空任务：" + (t ? t.title : ""), "task", sub.task_id);
+      await awardPoints(5, "清空任务：" + (t ? t.title : ""), "task", sub.task_id, bonus.extra > 0);
     }
-  } else {
-    await awardPoints(-10, "取消完成：" + sub.title, "subtask", sub.id);
-    if (wasAllDone) {
-      const t = tasks.find(x => x.id === sub.task_id);
-      await awardPoints(-5, "取消清空：" + (t ? t.title : ""), "task", sub.task_id);
-    }
+    return bonus;
   }
+  const extra = Number(sub.bonus_applied) || 0;
+  await awardPoints(-10, "取消完成：" + sub.title, "subtask", sub.id, extra > 0);
+  if (extra > 0) {
+    await awardPoints(-extra, "取消额外积分：" + sub.title, "subtask", sub.id, true);
+    const bRows = await db(cloud.database.from("subtasks").update({ bonus_applied: 0 }).eq("id", sub.id).select());
+    if (bRows && bRows[0]) Object.assign(sub, bRows[0]); else sub.bonus_applied = 0;
+  }
+  if (wasAllDone) {
+    const t = tasks.find(x => x.id === sub.task_id);
+    await awardPoints(-5, "取消清空：" + (t ? t.title : ""), "task", sub.task_id, true);
+  }
+  return { extra: 0, label: "" };
 }
 
 function renderPoints() {
@@ -4126,6 +4425,33 @@ async function hardDeleteTask(id) {
   archivedTasks = archivedTasks.filter(x => x.id !== id);
   renderAll();
   toast("已删除「" + t.title + "」的卡片 · 专注记录与月历统计都保留 📅");
+}
+
+/* 「暂时不想做」盒子：把不想面对的任务收起来，随时取回。
+   收起不扣分、不催、不提醒；取出给一点分，因为「愿意重新看一眼」本身就是动作。 */
+function shelvedSectionHtml() {
+  if (cardsMode !== "all") return "";
+  const list = tasks.filter(t => t.shelved);
+  if (!list.length) return "";
+  const rows = list.map(t => {
+    const cat = catOf(t);
+    const subs = taskSubs(t.id);
+    const doneCnt = subs.filter(s => s.done).length;
+    return '<div class="shelved-row">' +
+      '<span class="cat-badge" title="' + cat.label + '">' + cat.icon + "</span>" +
+      '<span class="shelved-name">' + esc(t.title) + "</span>" +
+      '<span class="shelved-meta">' + doneCnt + "/" + subs.length + "</span>" +
+      '<button class="btn ghost small" data-unshelve="' + t.id + '">取出 +3</button>' +
+      "</div>";
+  }).join("");
+  return '<div class="shelved-box">' +
+    '<button class="shelved-head" data-shelvedtoggle="1">' +
+    '<span>🧊 暂时不想做</span><span class="shelved-count">' + list.length + '</span>' +
+    '<span class="shelved-arrow">' + (shelvedOpen ? "▾" : "▸") + "</span>" +
+    "</button>" +
+    '<div class="shelved-list' + (shelvedOpen ? "" : " hidden") + '">' + rows +
+    '<p class="shelved-hint">放进来的东西没有消失，也没有在计时。想动的时候再取出来。</p>' +
+    "</div></div>";
 }
 
 function settledSectionHtml() {
