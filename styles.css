@@ -49,6 +49,14 @@ input, textarea, select { font-family: inherit; }
 .login-card h1 { font-size: 22px; margin: 10px 0 4px; }
 .login-sub { color: var(--text-sub); font-size: 13px; margin-bottom: 24px; }
 .form-row { margin-bottom: 14px; }
+/* 登录方式切换：验证码 / 密码 */
+.login-tabs { display: flex; gap: 6px; margin-bottom: 14px; background: rgba(0,0,0,.18); border-radius: 10px; padding: 4px; }
+.login-tab {
+  flex: 1; padding: 8px 0; border: none; border-radius: 8px; cursor: pointer;
+  background: transparent; color: rgba(255,255,255,.72); font-size: 13px; font-weight: 600;
+  transition: background .15s ease, color .15s ease;
+}
+.login-tab.active { background: var(--accent); color: #fff; }
 .form-row input {
   width: 100%;
   background: var(--bg-soft);

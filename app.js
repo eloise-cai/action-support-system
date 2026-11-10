@@ -118,6 +118,21 @@ async function db(promise, okMsg) {
 /* ============ 登录 ============ */
 let pendingOtp = null; // { phone, verificationId, isExistingUser }
 let codeCountdown = 0;
+let loginMode = "otp"; // 'otp' 短信验证码 | 'password' 手机号密码
+
+function setLoginMode(mode) {
+  loginMode = mode;
+  $id("tabOtp").classList.toggle("active", mode === "otp");
+  $id("tabPwd").classList.toggle("active", mode === "password");
+  $id("otpRows").classList.toggle("hidden", mode !== "otp");
+  $id("pwdRows").classList.toggle("hidden", mode !== "password");
+  $id("signupPwdRow").classList.add("hidden"); // 切换模式时收起注册密码框
+  $id("loginError").textContent = "";
+  $id("phoneError").textContent = "";
+  $id("loginBtn").textContent = mode === "password" ? "登录" : "登录 / 注册";
+}
+bind("tabOtp", "click", () => setLoginMode("otp"));
+bind("tabPwd", "click", () => setLoginMode("password"));
 
 function showLogin() {
   $id("loginView").classList.remove("hidden");
@@ -145,6 +160,9 @@ bind("sendCodeBtn", "click", async () => {
     return;
   }
   pendingOtp = { phone, verificationId: sent.data.verificationId, isExistingUser: sent.data.isExistingUser };
+  /* 新号码注册时给一个选填的「设置登录密码」，之后就能用密码登录；老号码不显示 */
+  $id("signupPwdRow").classList.toggle("hidden", !!sent.data.isExistingUser);
+  if (!sent.data.isExistingUser) $id("signupPwdInput").value = "";
   toast("验证码已发送，请查收短信");
   codeCountdown = 60;
   btn.textContent = codeCountdown + "s";
@@ -157,19 +175,53 @@ bind("sendCodeBtn", "click", async () => {
 
 bind("loginBtn", "click", async () => {
   const phone = $id("phoneInput").value.trim();
-  const code = $id("codeInput").value.trim();
   if (!/^1\d{10}$/.test(phone)) { $id("phoneError").textContent = "请输入正确的 11 位手机号"; return; }
+  $id("phoneError").textContent = "";
+
+  /* --- 密码登录 --- */
+  if (loginMode === "password") {
+    const pwd = $id("pwdInput").value;
+    if (!pwd) { $id("loginError").textContent = "请输入密码"; return; }
+    $id("loginError").textContent = "";
+    $id("loginBtn").disabled = true;
+    const res = await cloud.auth.signInWithPassword({ phone, password: pwd });
+    $id("loginBtn").disabled = false;
+    if (res.error) {
+      const msg = res.error.message || "";
+      if (/password not set/i.test(msg)) {
+        $id("loginError").textContent = "这个手机号还没设置过密码，请切回「验证码登录」先用短信进入";
+      } else if (res.error.kind === "invalid_grant" || /credential|password/i.test(msg)) {
+        $id("loginError").textContent = "手机号或密码错误";
+      } else {
+        $id("loginError").textContent = msg || "登录失败，请重试";
+      }
+      return;
+    }
+    pendingOtp = null;
+    await boot();
+    return;
+  }
+
+  /* --- 验证码登录 --- */
+  const code = $id("codeInput").value.trim();
   if (!pendingOtp || pendingOtp.phone !== phone) {
     $id("loginError").textContent = "请先为当前手机号获取验证码";
     return;
   }
   if (!code) { $id("loginError").textContent = "请输入验证码"; return; }
+  /* 新号码注册时可选设置密码（≥6 位），账号带上密码后就能用密码登录 */
+  let signupPwd = "";
+  if (!pendingOtp.isExistingUser) {
+    signupPwd = $id("signupPwdInput").value;
+    if (signupPwd && signupPwd.length < 6) { $id("loginError").textContent = "登录密码至少 6 位，不想要密码就留空"; return; }
+  }
   $id("loginBtn").disabled = true;
   const completed = await cloud.auth.verifyOtp({
     phone: pendingOtp.phone,
     verificationId: pendingOtp.verificationId,
     isExistingUser: pendingOtp.isExistingUser,
     token: code,
+    password: (!pendingOtp.isExistingUser && signupPwd) ? signupPwd : undefined,
   });
   $id("loginBtn").disabled = false;
   if (completed.error) {
@@ -177,6 +229,7 @@ bind("loginBtn", "click", async () => {
     return;
   }
   pendingOtp = null;
+  $id("signupPwdRow").classList.add("hidden");
   await boot();
 });
 
