@@ -3682,8 +3682,6 @@ let chatAbort = null;
 let chatConvId = "";
 let abcRecords = [];
 let abcLoaded = false;
-let abcReviewOpen = new Set(); // 展开了复盘面板的记录 id
-let abcJustSaved = null; // 刚保存的记录 id：复盘面板自动展开一次
 let aidRendered = false;
 let breathTimer = null;
 
@@ -3835,32 +3833,6 @@ async function loadAbc() {
   renderAbc();
 }
 
-function parseAbcReview(r) {
-  try {
-    const o = JSON.parse(r.review || "{}") || {};
-    return { why: o.why || "", change: o.change || "", alt: o.alt || "" };
-  } catch (e) { return { why: "", change: "", alt: "" }; }
-}
-
-const ABC_REVIEW_QS = [
-  ["why", "我为什么会这么想？"],
-  ["change", "这个认知或观点是否可以改变？"],
-  ["alt", "有没有可能有其他的理解？"],
-];
-
-function abcReviewPanelHtml(r) {
-  const rv = parseAbcReview(r);
-  return '<div class="abc-review-panel" data-abcpanel="' + r.id + '">' +
-    ABC_REVIEW_QS.map(([k, q]) =>
-      '<label class="modal-label abc-review-q">' + q + '</label>' +
-      '<textarea class="modal-textarea abc-review-ta" data-abckey="' + k + '" style="min-height:44px">' + esc(rv[k]) + "</textarea>"
-    ).join("") +
-    '<div class="abc-review-actions">' +
-    '<button class="btn primary abc-review-save" data-abclosave="' + r.id + '">保存复盘</button>' +
-    '<span class="abc-review-hint">不写也没关系，想聊的时候再来</span>' +
-    "</div></div>";
-}
-
 function renderAbc() {
   const box = $id("abcList");
   if (!abcRecords.length) {
@@ -3869,17 +3841,13 @@ function renderAbc() {
   }
   box.innerHTML = abcRecords.map(r => {
     const it = r.intensity || 0;
-    const rv = parseAbcReview(r);
-    const hasReview = !!(rv.why || rv.change || rv.alt);
-    const open = abcReviewOpen.has(r.id);
-    let html = '<div class="abc-item">' +
+    return '<div class="abc-item">' +
       '<button class="abc-del" data-delabc="' + r.id + '" title="删除记录">✕</button>' +
       '<div class="abc-main">' +
       '<div class="abc-item-top">' +
       '<span class="abc-date">' + esc(r.record_date) + '</span>' +
       (r.emotion ? '<span class="abc-emotion">' + esc(r.emotion) + '</span>' : "") +
       (it ? '<span class="abc-intensity">强度<i style="width:' + (it * 10) + 'px"></i>' + it + '/10</span>' : "") +
-      '<button class="abc-review-btn' + (hasReview ? " has" : "") + '" data-abcreview="' + r.id + '">' + (open ? "收起复盘" : (hasReview ? "复盘 ✓" : "复盘")) + "</button>" +
       "</div>" +
       '<div class="abc-line"><b>A 事件</b>' + esc(r.a_event) + "</div>" +
       '<div class="abc-line"><b>B 想法</b>' + esc(r.b_belief) + "</div>" +
@@ -3958,11 +3926,9 @@ bind("abcSaveBtn", "click", async () => {
     }).select());
     if (rows && rows[0]) {
       abcRecords.unshift(rows[0]);
-      abcJustSaved = rows[0].id;
-      abcReviewOpen.add(rows[0].id);
       renderAbc();
       $id("abcA").value = ""; $id("abcB").value = ""; $id("abcC").value = "";
-      toast("已记录 ✍️ 想复盘就展开聊聊，不想也先放着");
+      toast("已记录 ✍️ 觉察本身就是改变的第一步");
     }
   } catch (e) { /* db() 已提示 */ }
 });
