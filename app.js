@@ -24,10 +24,18 @@ const CATEGORIES = {
   hobby: { label: "爱好娱乐", icon: "🎮" },
   fitness: { label: "健身", icon: "🏋️" },
 };
-let customCats = []; // 用户自定义分类 [{ key, label, icon }]
+let customCats = []; // 用户自定义分类 + 内置分类的改名/隐藏记录 [{ key, label?, icon?, deleted?, base? }]
 function catMap() {
   const m = Object.assign({}, CATEGORIES);
-  for (const c of customCats) m[c.key] = { label: c.label, icon: c.icon || "📁", custom: true };
+  for (const c of customCats) {
+    if (m[c.key]) {
+      // 内置分类的覆盖记录：deleted=隐藏，否则用新名称/图标
+      if (c.deleted) delete m[c.key];
+      else m[c.key] = { label: c.label || m[c.key].label, icon: c.icon || m[c.key].icon, overridden: true };
+    } else if (!c.deleted) {
+      m[c.key] = { label: c.label, icon: c.icon || "📁", custom: true };
+    }
+  }
   return m;
 }
 function catOf(task) {
@@ -215,6 +223,12 @@ async function boot() {
   const { data: session, error } = await cloud.auth.getSession();
   if (error || !session) { showLogin(); return; }
   showApp();
+  window.__currentUser = (session && session.user) || null;
+  if (!window.__currentUser) {
+    try { const g = await cloud.auth.getUser(); window.__currentUser = (g && g.data && g.data.user) || null; } catch (e) {}
+  }
+  /* 钟磬陪伴空间：只有 17301834189 的账号能看到这个版面（后端另有 RLS 双重限制） */
+  if (window.Companion) { try { window.Companion.boot(window.__currentUser); } catch (e) {} }
   $id("userLabel").textContent = "已登录";
   await loadAll();
   ensureUserProfile(); // 用户唯一 ID（异步，不阻塞）
@@ -322,6 +336,7 @@ cloud.auth.onAuthStateChange((event) => {
     chatMsgs = []; abcRecords = []; abcLoaded = false;
     saveChatStorage();
     exitLayer();
+    if (window.Companion) { try { window.Companion.reset(); } catch (e) {} }
     showLogin();
   }
 });
@@ -341,6 +356,7 @@ document.querySelectorAll(".tab").forEach(btn => {
     if (btn.dataset.tab === "goals") renderGoals();
     if (btn.dataset.tab === "money") renderMoney();
     if (btn.dataset.tab === "cards") guideOnEnter(); // 进入任务列表时的伙伴引导
+    if (btn.dataset.tab === "companion" && window.Companion) window.Companion.onShow(); // 钟磬陪伴空间
   });
 });
 
@@ -3523,6 +3539,7 @@ function renderAbc() {
     const it = r.intensity || 0;
     return '<div class="abc-item">' +
       '<button class="abc-del" data-delabc="' + r.id + '" title="删除记录">✕</button>' +
+      '<div class="abc-main">' +
       '<div class="abc-item-top">' +
       '<span class="abc-date">' + esc(r.record_date) + '</span>' +
       (r.emotion ? '<span class="abc-emotion">' + esc(r.emotion) + '</span>' : "") +
@@ -3531,8 +3548,62 @@ function renderAbc() {
       '<div class="abc-line"><b>A 事件</b>' + esc(r.a_event) + "</div>" +
       '<div class="abc-line"><b>B 想法</b>' + esc(r.b_belief) + "</div>" +
       '<div class="abc-line"><b>C 结果</b>' + esc(r.c_result) + "</div>" +
+      "</div>" +
+      '<div class="abc-review">' + reviewHtml(r) + "</div>" +
       "</div>";
   }).join("");
+}
+
+/* 复盘面板：未写 → 引导按钮；已写 → 三问答案 + 编辑入口 */
+function reviewHtml(r) {
+  const has = r.rv_change || r.rv_other || r.rv_gain;
+  if (!has) {
+    return '<button class="rv-add" data-rvadd="' + r.id + '">＋ 写复盘</button>' +
+      '<div class="rv-hint">这个想法能否改变？<br>有没有其他解决办法？<br>从中获得了什么？</div>';
+  }
+  return '<div class="rv-title">复盘</div>' +
+    '<div class="rv-line"><b>能否改变</b>' + esc(r.rv_change || "—") + "</div>" +
+    '<div class="rv-line"><b>其他办法</b>' + esc(r.rv_other || "—") + "</div>" +
+    '<div class="rv-line"><b>获得什么</b>' + esc(r.rv_gain || "—") + "</div>" +
+    '<button class="rv-edit" data-rvedit="' + r.id + '">✎ 修改</button>';
+}
+
+/* 复盘编辑表单（就地替换右侧面板） */
+function reviewFormHtml(r) {
+  return '<div class="rv-title">复盘</div>' +
+    '<textarea class="rv-ta" id="rvTaChange" rows="2" placeholder="这个想法能否改变？">' + esc(r.rv_change || "") + "</textarea>" +
+    '<textarea class="rv-ta" id="rvTaOther" rows="2" placeholder="有没有其他解决办法？">' + esc(r.rv_other || "") + "</textarea>" +
+    '<textarea class="rv-ta" id="rvTaGain" rows="2" placeholder="从中获得了什么？">' + esc(r.rv_gain || "") + "</textarea>" +
+    '<div class="rv-btns"><button class="rv-save" data-rvsave="' + r.id + '">保存</button>' +
+    '<button class="rv-cancel" data-rvcancel="' + r.id + '">取消</button></div>';
+}
+
+function findAbc(id) { return abcRecords.find(x => x.id === id); }
+
+function openReviewForm(id, panel) {
+  const r = findAbc(id);
+  if (!r || !panel) return;
+  panel.innerHTML = reviewFormHtml(r);
+  const ta = panel.querySelector("textarea");
+  if (ta) ta.focus();
+}
+
+async function saveReview(id, panel) {
+  const change = ($id("rvTaChange") && $id("rvTaChange").value || "").trim();
+  const other = ($id("rvTaOther") && $id("rvTaOther").value || "").trim();
+  const gain = ($id("rvTaGain") && $id("rvTaGain").value || "").trim();
+  if (!change && !other && !gain) { toast("三个问题至少写一个吧", true); return; }
+  try {
+    const rows = await db(cloud.database.from("abc_records").update({
+      rv_change: change, rv_other: other, rv_gain: gain,
+    }).eq("id", id).select());
+    if (rows && rows[0]) {
+      const i = abcRecords.findIndex(x => x.id === id);
+      if (i >= 0) abcRecords[i] = rows[0];
+      renderAbc();
+      toast("复盘已记下 🌱 回头看时，这就是改变的痕迹");
+    }
+  } catch (err) { /* db() 已提示 */ }
 }
 
 bind("abcIntensity", "input", () => { $id("abcIntVal").textContent = $id("abcIntensity").value; });
@@ -3559,22 +3630,40 @@ bind("abcSaveBtn", "click", async () => {
 });
 
 bind("abcList", "click", async (e) => {
-  const btn = e.target.closest("[data-delabc]");
-  if (!btn) return;
-  const id = +btn.dataset.delabc;
-  const rec = abcRecords.find(x => x.id === id);
-  const ok = await confirmDialog({
-    title: "删除记录",
-    desc: "删除 " + esc(rec ? rec.record_date : "") + " 这条 ABC 记录？",
-    okText: "删除",
-  });
-  if (!ok) return;
-  try {
-    await db(cloud.database.from("abc_records").delete().eq("id", id).select());
-    abcRecords = abcRecords.filter(x => x.id !== id);
-    renderAbc();
-    toast("记录已删除");
-  } catch (err) { /* db() 已提示 */ }
+  const del = e.target.closest("[data-delabc]");
+  if (del) {
+    const id = +del.dataset.delabc;
+    const rec = abcRecords.find(x => x.id === id);
+    const ok = await confirmDialog({
+      title: "删除记录",
+      desc: "删除 " + esc(rec ? rec.record_date : "") + " 这条 ABC 记录？（复盘也会一起删掉）",
+      okText: "删除",
+    });
+    if (!ok) return;
+    try {
+      await db(cloud.database.from("abc_records").delete().eq("id", id).select());
+      abcRecords = abcRecords.filter(x => x.id !== id);
+      renderAbc();
+      toast("记录已删除");
+    } catch (err) { /* db() 已提示 */ }
+    return;
+  }
+  const add = e.target.closest("[data-rvadd]");
+  const edit = e.target.closest("[data-rvedit]");
+  if (add || edit) {
+    const id = +(add ? add.dataset.rvadd : edit.dataset.rvedit);
+    const panel = e.target.closest(".abc-item").querySelector(".abc-review");
+    openReviewForm(id, panel);
+    return;
+  }
+  const cancel = e.target.closest("[data-rvcancel]");
+  if (cancel) { renderAbc(); return; }
+  const save = e.target.closest("[data-rvsave]");
+  if (save) {
+    const id = +save.dataset.rvsave;
+    const panel = e.target.closest(".abc-item").querySelector(".abc-review");
+    await saveReview(id, panel);
+  }
 });
 
 /* ---------- 情绪急救包 ---------- */
@@ -3861,7 +3950,7 @@ function catOptionsHtml(sel) {
       '<span class="cat-ic">' + c.icon + "</span>" + esc(c.label) + "</button>";
   }).join("") +
     '<button class="cat-opt cat-add" id="mCatAdd" title="添加自定义分类">＋ 自定义</button>' +
-    (customCats.length ? '<button class="cat-opt cat-add" id="mCatManage" title="修改或删除自定义分类">⚙ 管理</button>' : "");
+    '<button class="cat-opt cat-add" id="mCatManage" title="修改或删除分类（内置 + 自定义）">⚙ 管理</button>';
 }
 function categoryPickerHtml(sel) {
   return '<div class="cat-picker" id="mCatPick">' + catOptionsHtml(sel) + "</div>";
@@ -3882,11 +3971,31 @@ function bindCategoryPicker(initial) {
       const icon = (row.querySelector(".cm-ic").value.trim() || "📁").slice(0, 4);
       const label = row.querySelector(".cm-name").value.trim();
       if (!label) { toast("名称不能为空", true); return; }
-      if (customCats.some(c => c.key !== sv.dataset.catsave && c.label === label) ||
-          Object.values(CATEGORIES).some(c => c.label === label)) { toast("已有同名分类", true); return; }
-      await persistCustomCats(customCats.map(c => c.key === sv.dataset.catsave ? { ...c, label, icon } : c));
+      const eff = catMap();
+      if (Object.keys(eff).some(k => k !== sv.dataset.catsave && eff[k].label === label)) { toast("已有同名分类", true); return; }
+      if (CATEGORIES[sv.dataset.catsave]) {
+        // 内置分类：写覆盖记录
+        const rest = customCats.filter(c => c.key !== sv.dataset.catsave);
+        await persistCustomCats(rest.concat([{ key: sv.dataset.catsave, label, icon, base: true }]));
+      } else {
+        await persistCustomCats(customCats.map(c => c.key === sv.dataset.catsave ? { ...c, label, icon } : c));
+      }
       renderCatManage(pick, ref);
       toast("分类已更新：" + icon + " " + label);
+      return;
+    }
+    const rs = e.target.closest("[data-catreset]");
+    if (rs) {
+      await persistCustomCats(customCats.filter(c => c.key !== rs.dataset.catreset));
+      renderCatManage(pick, ref);
+      toast("已恢复默认");
+      return;
+    }
+    const tr = e.target.closest("[data-catrestore]");
+    if (tr) {
+      await persistCustomCats(customCats.filter(c => c.key !== tr.dataset.catrestore));
+      renderCatManage(pick, ref);
+      toast("分类已恢复：" + CATEGORIES[tr.dataset.catrestore].icon + " " + CATEGORIES[tr.dataset.catrestore].label);
       return;
     }
     const dl = e.target.closest("[data-catdel]");
@@ -3897,9 +4006,16 @@ function bindCategoryPicker(initial) {
         setTimeout(() => { dl.classList.remove("armed"); dl.textContent = "🗑"; }, 3000);
         return;
       }
-      await persistCustomCats(customCats.filter(c => c.key !== dl.dataset.catdel));
+      if (CATEGORIES[dl.dataset.catdel]) {
+        // 内置分类：只隐藏，不动数据
+        const rest = customCats.filter(c => c.key !== dl.dataset.catdel);
+        await persistCustomCats(rest.concat([{ key: dl.dataset.catdel, deleted: true }]));
+        toast("分类已隐藏（用到它的任务显示为「未分类」，数据不受影响）");
+      } else {
+        await persistCustomCats(customCats.filter(c => c.key !== dl.dataset.catdel));
+        toast("分类已删除（用到它的任务显示为「未分类」，数据不受影响）");
+      }
       renderCatManage(pick, ref);
-      toast("分类已删除（用到它的任务显示为「未分类」，数据不受影响）");
       return;
     }
     const b = e.target.closest(".cat-opt");
@@ -3924,9 +4040,29 @@ async function persistCustomCats(next) {
   return saved;
 }
 
-/* 分类管理：内联列表，改名称/图标 + 删除（两步确认），不开新弹窗避免顶掉任务表单 */
+/* 分类管理：内联列表，内置 + 自定义都可改名称/图标、隐藏（两步确认）；不开新弹窗避免顶掉任务表单 */
 function renderCatManage(pick, ref) {
-  const rows = customCats.map(c =>
+  const eff = catMap();
+  const mkEditRow = (k, cur, extra) =>
+    '<div class="cat-mrow" data-k="' + k + '">' +
+    '<input class="cm-ic" maxlength="4" value="' + esc(cur.icon) + '" title="图标（一个 emoji）">' +
+    '<input class="cm-name" maxlength="8" value="' + esc(cur.label) + '" title="分类名称">' +
+    '<button type="button" class="btn primary small" data-catsave="' + k + '" title="保存修改">✓</button>' +
+    extra +
+    '<button type="button" class="btn ghost small cm-del" data-catdel="' + k + '" title="隐藏该分类">🗑</button>' +
+    "</div>";
+  const builtinRows = Object.keys(CATEGORIES).map(k => {
+    const ov = customCats.find(c => c.key === k);
+    if (ov && ov.deleted) {
+      return '<div class="cat-mrow cat-dead" data-k="' + k + '">' +
+        '<span class="cm-dead-txt">' + esc(CATEGORIES[k].icon) + " " + esc(CATEGORIES[k].label) + "（已隐藏）</span>" +
+        '<button type="button" class="btn ghost small" data-catrestore="' + k + '">恢复</button>' +
+        "</div>";
+    }
+    const reset = ov ? '<button type="button" class="btn ghost small" data-catreset="' + k + '" title="恢复默认">⟲</button>' : "";
+    return mkEditRow(k, eff[k] || CATEGORIES[k], reset);
+  }).join("");
+  const customRows = customCats.filter(c => !CATEGORIES[c.key] && !c.deleted).map(c =>
     '<div class="cat-mrow" data-k="' + c.key + '">' +
     '<input class="cm-ic" maxlength="4" value="' + esc(c.icon || "📁") + '" title="图标（一个 emoji）">' +
     '<input class="cm-name" maxlength="8" value="' + esc(c.label) + '" title="分类名称">' +
@@ -3934,8 +4070,9 @@ function renderCatManage(pick, ref) {
     '<button type="button" class="btn ghost small cm-del" data-catdel="' + c.key + '" title="删除该分类">🗑</button>' +
     "</div>").join("");
   pick.innerHTML = '<div class="cat-manage">' +
-    '<p class="cm-hint">改名称或图标后点 ✓ 保存；🗑 点一次变成「确认?」再点一次才删除。删除分类不影响已有任务数据（它们会显示为「未分类」）。</p>' +
-    (rows || '<p class="cm-hint">还没有自定义分类。</p>') +
+    '<p class="cm-hint">所有分类都能改：改名称或图标后点 ✓ 保存（⟲ 恢复默认）；🗑 点一次变成「确认?」再点一次隐藏。隐藏分类不影响已有任务数据（它们会显示为「未分类」）。</p>' +
+    builtinRows +
+    (customRows ? '<p class="cm-hint">自定义：</p>' + customRows : "") +
     '<button type="button" class="btn ghost small" id="mCatBack">‹ 返回</button></div>';
 }
 

@@ -1,3 +1,5 @@
 applications:
   - name: 任务番茄钟
     locator: wbapp_25jmKgPG9pW6Mx4K5LxZTk
+  - name: 钟磬陪伴空间
+    locator: wbapp_y4EgGpPceDucoHpgD36quC

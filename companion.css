@@ -1,0 +1,213 @@
+/* ============ 钟磬陪伴空间（内嵌版面） ============
+   与主应用深色主题同源，另加青铜金点缀；所有类名以 .zq- 前缀隔离 */
+
+.zq-wrap { display: flex; flex-direction: column; gap: 14px; }
+
+/* ---- 头部 ---- */
+.zq-head {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between;
+  gap: 12px; padding: 16px 18px; border-radius: var(--radius);
+  background:
+    radial-gradient(600px 120px at 0% 0%, rgba(200, 161, 90, .16), transparent 70%),
+    linear-gradient(135deg, #17202f 0%, #131b29 100%);
+  border: 1px solid rgba(200, 161, 90, .22);
+}
+.zq-title { font-size: 17px; font-weight: 600; letter-spacing: .5px; display: flex; align-items: center; gap: 8px; }
+.zq-title small {
+  font-size: 11px; font-weight: 400; color: #c8a15a; letter-spacing: 1px;
+  border: 1px solid rgba(200, 161, 90, .4); border-radius: 999px; padding: 2px 8px;
+}
+.zq-subtabs { display: flex; gap: 6px; flex-wrap: wrap; }
+.zq-sub {
+  padding: 7px 14px; border-radius: 999px; font-size: 13px;
+  background: rgba(255, 255, 255, .04); border: 1px solid var(--border); color: var(--text-sub);
+  transition: .18s;
+}
+.zq-sub:hover { color: var(--text); border-color: rgba(200, 161, 90, .35); }
+.zq-sub.active {
+  background: rgba(200, 161, 90, .16); border-color: rgba(200, 161, 90, .55); color: #e8c98a; font-weight: 600;
+}
+
+/* ---- 模型 & 风格调节 ---- */
+.zq-tune {
+  flex: 1 0 100%; display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+  padding-top: 10px; border-top: 1px solid rgba(200, 161, 90, .14);
+}
+.zq-tune-lb { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--text-sub); }
+.zq-model-sel {
+  max-width: 320px; padding: 6px 10px; border-radius: 8px; font-size: 12.5px;
+  background: #151d2b; border: 1px solid var(--border); color: #e7ecf4; outline: none;
+}
+.zq-model-sel:focus { border-color: rgba(200, 161, 90, .5); }
+.zq-switch { cursor: pointer; }
+.zq-switch input { accent-color: #c8a15a; width: 14px; height: 14px; }
+
+/* ---- 对话 ---- */
+.zq-pane { display: flex; flex-direction: column; gap: 12px; }
+.zq-chat-list {
+  height: calc(100vh - 360px); min-height: 340px; overflow-y: auto;
+  display: flex; flex-direction: column; gap: 10px;
+  padding: 18px 16px; border-radius: var(--radius);
+  background: linear-gradient(180deg, #121a28 0%, #0f1725 100%);
+  border: 1px solid var(--border);
+  scroll-behavior: smooth;
+}
+.zq-day { align-self: center; font-size: 11px; color: var(--text-sub); letter-spacing: 1px; opacity: .7; margin: 6px 0; }
+.zq-empty { margin: auto; color: var(--text-sub); font-size: 13px; text-align: center; line-height: 1.9; }
+.zq-msg {
+  max-width: 78%; min-width: 0; padding: 10px 13px; font-size: 14px; line-height: 1.72;
+  border-radius: 14px; white-space: pre-wrap; word-break: break-word; animation: zqIn .22s ease-out;
+}
+@keyframes zqIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+.zq-msg.him {
+  align-self: flex-start; background: #1c2638; border: 1px solid rgba(200, 161, 90, .18);
+  border-top-left-radius: 5px; color: #e7ecf4;
+}
+.zq-msg.me {
+  align-self: flex-end; background: linear-gradient(135deg, #3a3220 0%, #2c2718 100%);
+  border: 1px solid rgba(200, 161, 90, .32); border-top-right-radius: 5px; color: #f0e3c6;
+}
+.zq-msg.thinking { color: var(--text-sub); font-style: italic; }
+
+.zq-chips { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 2px; }
+.zq-chip {
+  flex: 0 0 auto; padding: 7px 13px; border-radius: 999px; font-size: 12.5px;
+  background: rgba(255, 255, 255, .04); border: 1px solid var(--border); color: var(--text-sub);
+}
+.zq-chip:hover { color: #e8c98a; border-color: rgba(200, 161, 90, .4); }
+
+.zq-input-row { display: flex; gap: 10px; align-items: flex-end; }
+.zq-input {
+  flex: 1; min-width: 0; resize: none; min-height: 44px; max-height: 110px;
+  background: var(--bg-soft); border: 1px solid var(--border); border-radius: 12px;
+  padding: 12px 14px; color: var(--text); font-size: 14px; line-height: 1.5; outline: none;
+}
+.zq-input:focus { border-color: rgba(200, 161, 90, .5); }
+.zq-send {
+  width: 46px; height: 46px; flex: 0 0 46px; border-radius: 12px; font-size: 17px;
+  background: linear-gradient(135deg, #d9b878, #b98f4d); color: #241c0d; border: none; font-weight: 700;
+}
+.zq-send:hover { filter: brightness(1.06); }
+
+/* ---- 陪伴 ---- */
+.zq-presence-card {
+  padding: 26px 22px; border-radius: var(--radius); text-align: center;
+  background:
+    radial-gradient(400px 160px at 50% 0%, rgba(200, 161, 90, .14), transparent 70%),
+    linear-gradient(180deg, #17202f, #121a28);
+  border: 1px solid rgba(200, 161, 90, .2);
+}
+.zq-face { font-size: 40px; line-height: 1; margin-bottom: 12px; }
+.zq-presence-line { font-size: 15px; line-height: 1.85; color: #e9edf4; }
+.zq-poem { margin-top: 14px; font-size: 12.5px; color: #c8a15a; opacity: .9; letter-spacing: .4px; }
+
+.zq-card {
+  padding: 20px; border-radius: var(--radius); background: var(--card); border: 1px solid var(--border);
+}
+.zq-card-t { font-size: 14px; font-weight: 600; margin-bottom: 8px; }
+.zq-card-desc { font-size: 12.5px; color: var(--text-sub); line-height: 1.75; margin-bottom: 14px; }
+.zq-clock {
+  font-variant-numeric: tabular-nums; font-size: 30px; text-align: center;
+  letter-spacing: 2px; color: #e8c98a; margin: 6px 0 10px; font-weight: 300;
+}
+.zq-status { text-align: center; font-size: 13px; color: var(--text-sub); min-height: 22px; margin-bottom: 14px; line-height: 1.7; }
+.zq-total { font-size: 24px; color: #e8c98a; font-weight: 300; }
+
+/* ---- 日记：双栏（左 信+日记 ｜ 右 共鸣讨论） ---- */
+.zq-diary-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; align-items: start; }
+.zq-dcol { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+@media (max-width: 980px) { .zq-diary-cols { grid-template-columns: 1fr; } }
+
+.zq-mini-btn {
+  float: right; padding: 4px 12px; border-radius: 999px; font-size: 12px;
+  background: rgba(200, 161, 90, .12); border: 1px solid rgba(200, 161, 90, .4); color: #e8c98a;
+}
+.zq-mini-btn:hover { background: rgba(200, 161, 90, .22); }
+.zq-mini-btn:disabled { opacity: .5; }
+
+/* 信件 */
+.zq-letter-list { display: flex; flex-direction: column; gap: 10px; max-height: 430px; overflow-y: auto; padding-right: 2px; }
+.zq-letter {
+  max-width: 92%; padding: 12px 15px; font-size: 13.5px; line-height: 1.9;
+  white-space: pre-wrap; word-break: break-word; border-radius: 12px; animation: zqIn .22s ease-out;
+}
+.zq-letter .zq-letter-meta { display: block; font-size: 11px; letter-spacing: .5px; opacity: .65; margin-bottom: 6px; }
+.zq-letter.him { align-self: flex-start; background: #1c2638; border: 1px solid rgba(200, 161, 90, .18); color: #e7ecf4; border-top-left-radius: 4px; }
+.zq-letter.me { align-self: flex-end; background: linear-gradient(135deg, #3a3220 0%, #2c2718 100%); border: 1px solid rgba(200, 161, 90, .32); color: #f0e3c6; border-top-right-radius: 4px; }
+.zq-letter.busy { color: var(--text-sub); font-style: italic; }
+.zq-letter-compose { display: flex; flex-direction: column; gap: 10px; margin-top: 12px; }
+.zq-letter-actions { display: flex; justify-content: flex-end; align-items: center; gap: 10px; }
+.zq-send-wide { width: auto; padding: 0 22px; height: 40px; font-size: 14px; }
+
+/* 话题 */
+.zq-topic-form { display: flex; flex-direction: column; gap: 10px; margin: 4px 0 12px; }
+.zq-input-line { min-height: 40px; }
+.zq-topic-kinds { display: flex; flex-wrap: wrap; gap: 6px; }
+.zq-kind {
+  padding: 5px 12px; border-radius: 999px; font-size: 12px;
+  background: rgba(255, 255, 255, .04); border: 1px solid var(--border); color: var(--text-sub);
+}
+.zq-kind.on { background: rgba(200, 161, 90, .16); border-color: rgba(200, 161, 90, .55); color: #e8c98a; }
+.zq-topic-list { display: flex; flex-direction: column; gap: 8px; }
+.zq-topic-item {
+  display: flex; align-items: center; gap: 10px; text-align: left; width: 100%;
+  padding: 11px 13px; border-radius: 10px; background: rgba(255, 255, 255, .03);
+  border: 1px solid var(--border); color: var(--text);
+}
+.zq-topic-item:hover { border-color: rgba(200, 161, 90, .4); }
+.zq-topic-kind {
+  flex: 0 0 auto; font-size: 11px; padding: 2px 9px; border-radius: 999px;
+  background: rgba(200, 161, 90, .12); border: 1px solid rgba(200, 161, 90, .35); color: #e8c98a;
+}
+.zq-topic-name { font-size: 13.5px; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.zq-topic-date { flex: 0 0 auto; font-size: 11px; color: var(--text-sub); }
+.zq-topic-del { flex: 0 0 auto; background: none; border: none; color: var(--text-sub); font-size: 13px; padding: 2px 4px; }
+.zq-topic-del:hover { color: #e08585; }
+.zq-topic-empty { color: var(--text-sub); font-size: 13px; line-height: 1.9; text-align: center; padding: 14px 0; }
+
+/* 话题讨论室 */
+.zq-topic-room-head { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+.zq-topic-room-title { font-size: 14px; font-weight: 600; color: #e8c98a; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.zq-topic-msgs {
+  height: 380px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px;
+  padding: 14px 12px; border-radius: 12px; margin-bottom: 12px;
+  background: linear-gradient(180deg, #121a28 0%, #0f1725 100%); border: 1px solid var(--border);
+}
+
+/* ---- 日记 ---- */
+.zq-diary-intro { font-size: 12.5px; color: var(--text-sub); padding: 0 2px 4px; }
+.zq-diary-list { display: flex; flex-direction: column; gap: 10px; }
+.zq-diary-item { border-radius: 12px; background: var(--card); border: 1px solid var(--border); overflow: hidden; }
+.zq-diary-head {
+  width: 100%; display: flex; align-items: baseline; gap: 12px; text-align: left;
+  padding: 14px 16px; background: none; border: none; color: var(--text);
+}
+.zq-diary-head:hover { background: rgba(255, 255, 255, .03); }
+.zq-diary-date { font-size: 12px; color: #c8a15a; letter-spacing: .5px; flex: 0 0 auto; }
+.zq-diary-title { font-size: 14.5px; font-weight: 500; }
+.zq-diary-body {
+  padding: 0 18px 18px; font-size: 13.5px; line-height: 1.95; color: #dbe2ec;
+  white-space: pre-wrap;
+}
+.zq-diary-sign { margin-top: 12px; text-align: right; font-size: 12px; color: var(--text-sub); font-style: italic; }
+
+/* ---- 他的世界 ---- */
+.zq-world-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px; }
+.zq-world-card { padding: 18px; border-radius: var(--radius); background: var(--card); border: 1px solid var(--border); }
+.zq-world-card h3 { font-size: 14px; margin-bottom: 10px; color: #e8c98a; font-weight: 600; }
+.zq-world-card ul { padding-left: 18px; }
+.zq-world-card li { font-size: 13px; line-height: 1.9; color: #dbe2ec; }
+.zq-world-card p { font-size: 13px; line-height: 1.9; color: #dbe2ec; }
+.zq-dim { color: var(--text-sub); }
+.zq-profile { display: grid; grid-template-columns: 58px 1fr; gap: 6px 10px; }
+.zq-profile dt { font-size: 12.5px; color: var(--text-sub); }
+.zq-profile dd { font-size: 13px; color: #dbe2ec; line-height: 1.7; }
+
+@media (max-width: 720px) {
+  .zq-chat-list { height: calc(100vh - 400px); min-height: 300px; padding: 14px 12px; }
+  .zq-msg { max-width: 86%; }
+  .zq-head { padding: 14px; }
+  .zq-sub { padding: 6px 12px; font-size: 12.5px; }
+  .zq-topic-msgs { height: 300px; }
+  .zq-letter-list { max-height: 340px; }
+}

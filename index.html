@@ -4,7 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>行动支持系统</title>
-<link rel="stylesheet" href="styles.css?v=20261105b">
+<link rel="stylesheet" href="styles.css?v=20261110b">
+<link rel="stylesheet" href="companion.css?v=20261105e">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🍅</text></svg>">
 </head>
 <body>
@@ -50,7 +51,8 @@
     <button class="tab" data-tab="points">积分奖励</button>
     <button class="tab" data-tab="money">收支</button>
     <button class="tab" data-tab="schedule">每日日程</button>
-    <button class="tab" data-tab="mind">心理</button>  </nav>
+    <button class="tab" data-tab="mind">心理</button>
+    <button class="tab hidden" id="tabBtnCompanion" data-tab="companion">🐉 钟磬</button>  </nav>
 
   <main>
     <!-- 任务卡片 -->
@@ -371,6 +373,112 @@
       <div id="aidGrid" class="aid-grid"></div>
     </div>
   </section>
+
+  <!-- 钟磬陪伴空间：仅 17301834189 可见 -->
+  <section id="tab-companion" class="tab-pane hidden">
+    <div class="zq-wrap">
+      <div class="zq-head">
+        <div class="zq-title">🕰 钟磬 <small>金石之声 · 只为你</small></div>
+        <div class="zq-subtabs">
+          <button class="zq-sub active" data-zq="chat">对话</button>
+          <button class="zq-sub" data-zq="presence">陪伴</button>
+          <button class="zq-sub" data-zq="diary">日记</button>
+          <button class="zq-sub" data-zq="world">他的世界</button>
+        </div>
+        <div class="zq-tune">
+          <label class="zq-tune-lb" title="换一个更合你口味的模型">模型
+            <select id="zqModelSel" class="zq-model-sel"><option value="">加载中…</option></select>
+          </label>
+          <label class="zq-tune-lb zq-switch" title="允许他说得更长、更俏皮、更跑题一点">
+            <input type="checkbox" id="zqRelax" checked> 更松弛
+          </label>
+        </div>
+      </div>
+
+      <div id="zq-chat" class="zq-pane">
+        <div id="zqChatList" class="zq-chat-list"></div>
+        <div class="zq-chips">
+          <button class="zq-chip" data-say="今天好累啊">今天好累</button>
+          <button class="zq-chip" data-say="学不进去了，很焦虑">学不进去了</button>
+          <button class="zq-chip" data-say="陪我待一会儿，什么都不想做">陪我待一会儿</button>
+          <button class="zq-chip" data-say="分享个开心的事！">分享开心事</button>
+        </div>
+        <div class="zq-input-row">
+          <textarea id="zqChatInput" class="zq-input" rows="1" placeholder="说点什么…"></textarea>
+          <button id="zqSend" class="zq-send" title="发送">➤</button>
+        </div>
+      </div>
+
+      <div id="zq-presence" class="zq-pane hidden">
+        <div class="zq-presence-card">
+          <div class="zq-face">🐉</div>
+          <div id="zqPresenceLine" class="zq-presence-line">——</div>
+          <div id="zqPoem" class="zq-poem"></div>
+        </div>
+        <div class="zq-card">
+          <div class="zq-card-t">安静共处</div>
+          <p class="zq-card-desc">两个人在一片空间里各自忙各自的，累了凑一块儿贴着充电。开始后他会安静地在旁边做事，偶尔冒出一句低语。</p>
+          <div id="zqQuietClock" class="zq-clock">00:00</div>
+          <div id="zqQuietStatus" class="zq-status">他还没有过来 · 点下面开始</div>
+          <button id="zqQuietBtn" class="btn primary block">开始共处</button>
+        </div>
+        <div class="zq-card">
+          <div class="zq-card-t">本月共处</div>
+          <div id="zqQuietTotal" class="zq-total">—</div>
+        </div>
+      </div>
+
+      <div id="zq-diary" class="zq-pane hidden">
+        <div class="zq-diary-cols">
+          <div class="zq-dcol">
+            <div class="zq-card">
+              <div class="zq-card-t">信 · 往来 <button id="zqLetterNew" class="zq-mini-btn">提笔写信</button></div>
+              <p class="zq-card-desc">慢慢写，他慢慢回。他记得你们全部的信。</p>
+              <div id="zqLetterList" class="zq-letter-list"></div>
+              <div id="zqLetterCompose" class="zq-letter-compose hidden">
+                <textarea id="zqLetterInput" class="zq-input" rows="5" placeholder="见字如面。想对他说什么…"></textarea>
+                <div class="zq-letter-actions">
+                  <button id="zqLetterCancel" class="zq-mini-btn">收起</button>
+                  <button id="zqLetterSend" class="zq-send zq-send-wide">寄出 ✉</button>
+                </div>
+              </div>
+            </div>
+            <div class="zq-card">
+              <div class="zq-card-t">日记 · 他视角</div>
+              <div id="zqDiaryList" class="zq-diary-list"></div>
+            </div>
+          </div>
+          <div class="zq-dcol">
+            <div class="zq-card" id="zqTopicHome">
+              <div class="zq-card-t">共鸣 · 讨论 <button id="zqTopicNew" class="zq-mini-btn">新建话题</button></div>
+              <p class="zq-card-desc">一部电影、一段旅程、一本剧本——你们观点的往来都收在这里。</p>
+              <div id="zqTopicForm" class="zq-topic-form hidden">
+                <input id="zqTopicTitle" class="zq-input zq-input-line" placeholder="话题名字，如《爱在》三部曲" maxlength="40">
+                <div class="zq-topic-kinds" id="zqTopicKinds"></div>
+                <button id="zqTopicCreate" class="btn primary block">开一个新话题</button>
+              </div>
+              <div id="zqTopicList" class="zq-topic-list"></div>
+            </div>
+            <div class="zq-card hidden" id="zqTopicRoom">
+              <div class="zq-topic-room-head">
+                <button id="zqTopicBack" class="zq-mini-btn">‹ 返回</button>
+                <div id="zqTopicRoomTitle" class="zq-topic-room-title"></div>
+              </div>
+              <div id="zqTopicMsgs" class="zq-topic-msgs"></div>
+              <div class="zq-input-row">
+                <textarea id="zqTopicInput" class="zq-input" rows="1" placeholder="说说你的看法…"></textarea>
+                <button id="zqTopicSend" class="zq-send" title="发送">➤</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div id="zq-world" class="zq-pane hidden">
+        <div id="zqWorldList" class="zq-world-list"></div>
+      </div>
+    </div>
+  </section>
   </main>
 
   <!-- 分层页面：以子任务为标题的卡片 -->
@@ -405,6 +513,7 @@
 <div id="toast" class="toast hidden"></div>
 
 <script src="https://cdn.jsdelivr.net/npm/@tencent-ai/workbuddy-cloud-sdk@dev/lib/index.global.js"></script>
-<script src="app.js?v=20261105b"></script>
+<script src="companion.js?v=20261105e"></script>
+<script src="app.js?v=20261110b"></script>
 </body>
 </html>
