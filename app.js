@@ -238,6 +238,197 @@ bind("logoutBtn", "click", async () => {
   await cloud.auth.signOut();
 });
 
+/* ============ 账号安全：老账号自助设置 / 修改密码 ============
+   两条通道：
+   A. 短信验证码设置/重置密码（任何账号可用，未设过密码的老账号走这里）
+      底层是云服务 PASSWORD_RESET 流程：发验证码 → 验证换 token → reset 设新密码
+   B. 旧密码修改（记得旧密码时，走 SDK resetPasswordForOld） */
+let acctCountdown = 0;
+let acctSms = null; // { phone, verificationId }
+
+function acctApiPhone(p) {
+  return "+86 " + p; // 后端要求 ^\+[1-9]\d{0,3}\s\d{4,20}$ 格式
+}
+async function acctRaw(path, method, body) {
+  let res;
+  try {
+    res = await fetch(publicConfig.endpoint + path, {
+      method,
+      headers: { "Content-Type": "application/json", "x-wb-webapp-access-key": publicConfig.publishableKey },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+  } catch (e) {
+    return { ok: false, status: 0, data: { error_description: "网络异常，请检查网络后重试" } };
+  }
+  let data = null;
+  try { data = await res.json(); } catch (e) { data = null; }
+  return { ok: res.ok, status: res.status, data: data || {} };
+}
+function acctDesc(d) {
+  return (d && (d.error_description || d.error_description2)) || (d && d.error) || "";
+}
+
+function openAccountSecurity() {
+  const lastPhone = $id("phoneInput").value.trim();
+  const prefill = /^1\d{10}$/.test(lastPhone) ? ' value="' + lastPhone + '"' : "";
+  openModal(
+    "<h3>🔒 账号安全</h3>" +
+    '<p class="acct-hint">设置密码后，下次可以直接用手机号 + 密码登录，不用等短信</p>' +
+    /* 通道 A：短信验证码 */
+    '<div id="acctSmsView">' +
+    '<label class="modal-label">手机号</label>' +
+    '<input id="mAcctPhone" class="modal-input" type="tel" maxlength="11" placeholder="请输入 11 位手机号"' + prefill + ">" +
+    '<label class="modal-label">短信验证码</label>' +
+    '<div class="acct-code-row">' +
+    '<input id="mAcctCode" class="modal-input" type="text" inputmode="numeric" maxlength="6" placeholder="6 位验证码">' +
+    '<button id="mAcctSend" class="btn ghost small">获取验证码</button>' +
+    "</div>" +
+    '<label class="modal-label">设置登录密码（至少 6 位）</label>' +
+    '<input id="mAcctNewPwd" class="modal-input" type="password" maxlength="32" placeholder="新密码" autocomplete="new-password">' +
+    '<p id="mAcctError" class="field-error"></p>' +
+    '<div class="modal-actions">' +
+    '<button class="btn ghost" id="mAcctSwitchOld">记得旧密码？用旧密码改</button>' +
+    '<button class="btn primary" id="mAcctSubmit">设置密码</button>' +
+    "</div>" +
+    "</div>" +
+    /* 通道 B：旧密码修改 */
+    '<div id="acctOldView" class="hidden">' +
+    '<label class="modal-label">旧密码</label>' +
+    '<input id="mAcctOldPwd" class="modal-input" type="password" maxlength="32" placeholder="当前使用的密码" autocomplete="current-password">' +
+    '<label class="modal-label">新密码（至少 6 位）</label>' +
+    '<input id="mAcctNewPwd2" class="modal-input" type="password" maxlength="32" placeholder="新密码" autocomplete="new-password">' +
+    '<p id="mAcctError2" class="field-error"></p>' +
+    '<div class="modal-actions">' +
+    '<button class="btn ghost" id="mAcctSwitchSms">没设过密码？用短信验证码设置</button>' +
+    '<button class="btn primary" id="mAcctSubmitOld">修改密码</button>' +
+    "</div>" +
+    "</div>"
+  );
+  acctSms = null;
+
+  /* --- 视图切换 --- */
+  const showView = which => {
+    $id("acctSmsView").classList.toggle("hidden", which !== "sms");
+    $id("acctOldView").classList.toggle("hidden", which !== "old");
+    $id("mAcctError").textContent = "";
+    $id("mAcctError2").textContent = "";
+  };
+  bind("mAcctSwitchOld", "click", () => showView("old"));
+  bind("mAcctSwitchSms", "click", () => showView("sms"));
+
+  /* --- A1. 发送验证码（PASSWORD_RESET 用法，只对已注册账号） --- */
+  bind("mAcctSend", "click", async () => {
+    const phone = $id("mAcctPhone").value.trim();
+    if (!/^1\d{10}$/.test(phone)) { $id("mAcctError").textContent = "请输入正确的 11 位手机号"; return; }
+    $id("mAcctError").textContent = "";
+    const btn = $id("mAcctSend");
+    btn.disabled = true;
+    const res = await acctRaw("/.cloud/auth/v1/verification", "POST", {
+      phone_number: acctApiPhone(phone),
+      usage: "PASSWORD_RESET",
+      target: "USER",
+    });
+    if (!res.ok) {
+      btn.disabled = false;
+      const desc = acctDesc(res.data);
+      $id("mAcctError").textContent = /不存在/.test(desc)
+        ? "这个手机号还没有注册过账号，先用验证码登录一次再来设置密码"
+        : (desc || "验证码发送失败，请稍后再试");
+      return;
+    }
+    const vid = res.data && typeof res.data.verification_id === "string" ? res.data.verification_id : "";
+    if (!vid) { btn.disabled = false; $id("mAcctError").textContent = "验证码发送异常，请稍后再试"; return; }
+    acctSms = { phone, verificationId: vid };
+    toast("验证码已发送，请查收短信");
+    acctCountdown = 60;
+    btn.textContent = acctCountdown + "s";
+    const iv = setInterval(() => {
+      acctCountdown--;
+      if (acctCountdown <= 0 || !document.getElementById("mAcctSend")) {
+        clearInterval(iv);
+        const b = document.getElementById("mAcctSend");
+        if (b) { b.disabled = false; b.textContent = "获取验证码"; }
+      } else {
+        const b = document.getElementById("mAcctSend");
+        if (b) b.textContent = acctCountdown + "s";
+      }
+    }, 1000);
+  });
+
+  /* --- A2. 提交：验证码换 token → reset 设新密码 --- */
+  bind("mAcctSubmit", "click", async () => {
+    if (!acctSms) { $id("mAcctError").textContent = "请先获取短信验证码"; return; }
+    const code = $id("mAcctCode").value.trim();
+    const pwd = $id("mAcctNewPwd").value;
+    if (!code) { $id("mAcctError").textContent = "请输入短信验证码"; return; }
+    if (pwd.length < 6) { $id("mAcctError").textContent = "密码至少 6 位"; return; }
+    $id("mAcctError").textContent = "";
+    const btn = $id("mAcctSubmit");
+    btn.disabled = true;
+    const v = await acctRaw("/.cloud/auth/v1/verification/verify", "POST", {
+      verification_id: acctSms.verificationId,
+      verification_code: code,
+    });
+    if (!v.ok) {
+      btn.disabled = false;
+      const desc = acctDesc(v.data);
+      $id("mAcctError").textContent = /code|验证|mismatch/i.test(desc) ? "验证码不正确，请核对短信后重试" : (desc || "验证失败，请重试");
+      return;
+    }
+    const vtoken = v.data && typeof v.data.verification_token === "string" ? v.data.verification_token : "";
+    if (!vtoken) {
+      btn.disabled = false;
+      $id("mAcctError").textContent = "验证异常，请重新获取验证码再试";
+      return;
+    }
+    /* reset 标识字段优先 phone_number；若后端只认 username 则自动回退（字段校验失败不会消耗 token） */
+    const apiPhone = acctApiPhone(acctSms.phone);
+    let r = await acctRaw("/.cloud/auth/v1/reset", "POST", { phone_number: apiPhone, new_password: pwd, verification_token: vtoken });
+    if (!r.ok && r.status === 400) {
+      const desc = acctDesc(r.data);
+      if (/ResetPasswordRequest|unknown field|unsupported|Username|phone_number|PhoneNumber/i.test(desc)) {
+        r = await acctRaw("/.cloud/auth/v1/reset", "POST", { username: apiPhone, new_password: pwd, verification_token: vtoken });
+      }
+    }
+    btn.disabled = false;
+    if (!r.ok) {
+      const desc = acctDesc(r.data);
+      $id("mAcctError").textContent = /token|expired/i.test(desc) ? "验证码已失效，请重新获取后再试" : (desc || "设置失败，请稍后再试");
+      return;
+    }
+    acctSms = null;
+    closeModal();
+    toast("密码已设置 ✅ 下次可用手机号 + 密码直接登录");
+  });
+
+  /* --- B. 旧密码修改（SDK：sudo 验旧密码 → PATCH password） --- */
+  bind("mAcctSubmitOld", "click", async () => {
+    const oldP = $id("mAcctOldPwd").value;
+    const newP = $id("mAcctNewPwd2").value;
+    if (!oldP) { $id("mAcctError2").textContent = "请输入旧密码"; return; }
+    if (newP.length < 6) { $id("mAcctError2").textContent = "新密码至少 6 位"; return; }
+    $id("mAcctError2").textContent = "";
+    const btn = $id("mAcctSubmitOld");
+    btn.disabled = true;
+    const res = await cloud.auth.resetPasswordForOld({ oldPassword: oldP, newPassword: newP });
+    btn.disabled = false;
+    if (res.error) {
+      const msg = res.error.message || "";
+      if (/password not set/i.test(msg)) {
+        $id("mAcctError2").textContent = "这个账号还没设置过密码，请用「短信验证码设置」那条通道";
+      } else if (res.error.kind === "invalid_grant" || /credential|password/i.test(msg)) {
+        $id("mAcctError2").textContent = "旧密码不正确";
+      } else {
+        $id("mAcctError2").textContent = msg || "修改失败，请稍后再试";
+      }
+      return;
+    }
+    closeModal();
+    toast("密码已修改 ✅ 下次用新密码登录");
+  });
+}
+bind("acctBtn", "click", openAccountSecurity);
+
 /* ============ 数据加载 ============ */
 async function loadAll() {
   const [t, s, p, it, pt, rw, gl, mr, lt, ci, cr, yg] = await Promise.all([

@@ -648,6 +648,11 @@ main { max-width: 1100px; margin: 0 auto; padding: 22px 18px 80px; }
 .cat-opt.sel { border-color: var(--accent); color: #cfe0ff; background: rgba(79,140,255,.14); }
 .modal-actions { display: flex; gap: 10px; margin-top: 20px; flex-wrap: wrap; }
 .modal-actions .btn { flex: 1; }
+/* 账号安全弹窗 */
+.acct-hint { font-size: 12px; color: var(--text-sub); margin: -6px 0 4px; }
+.acct-code-row { display: flex; gap: 8px; align-items: stretch; }
+.acct-code-row .modal-input { flex: 1; min-width: 0; }
+.acct-code-row .btn { white-space: nowrap; }
 .modal-head-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 12px; }
 .modal-head-row h3 { margin: 0; font-size: 17px; word-break: break-all; }
 .link-btn {
