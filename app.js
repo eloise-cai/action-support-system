@@ -210,11 +210,11 @@ async function loadAll() {
   archivedTaskIds = new Set(rawTasks.filter(x => x.archived).map(x => x.id));
   archivedTasks = rawTasks.filter(x => x.archived && !x.deleted); // deleted=true 的只删了卡片，后台数据还在
   tasks = rawTasks.filter(x => !x.archived);          // 列表 / 分层 / 统计只看活跃任务
-  allSubtasks = s.data || [];
-  subtasks = allSubtasks.filter(x => !archivedTaskIds.has(x.task_id));
+  allSubtasks = s.data || [];                         // 全量含软删（deleted=true）的卡片：月历打卡仍要认它们
+  subtasks = allSubtasks.filter(x => !archivedTaskIds.has(x.task_id) && !x.deleted);
   sessions = p.data || [];                            // 全量：归档任务的历史专注仍要计入月历
-  const archSubIds = new Set(allSubtasks.filter(x => archivedTaskIds.has(x.task_id)).map(x => x.id));
-  items = (it.data || []).filter(x => !archSubIds.has(x.subtask_id));
+  const goneSubIds = new Set(allSubtasks.filter(x => archivedTaskIds.has(x.task_id) || x.deleted).map(x => x.id));
+  items = (it.data || []).filter(x => !goneSubIds.has(x.subtask_id));
   points = pt.data || [];
   rewards = rw.data || [];
   goals = gl.data || [];
@@ -1302,10 +1302,13 @@ async function onSubtaskGridClick(e) {
     if (delSub) {
       const id = +delSub.dataset.delsub;
       const s = subtasks.find(x => x.id === id);
+      const green = !!(s && (s.done || (items.some(i => i.subtask_id === id) && items.filter(i => i.subtask_id === id).every(i => i.done))));
       const ok = await confirmDialog({
-        title: "删除子任务",
-        desc: "「" + esc(s ? s.title : "") + "」及其子子任务、番茄钟记录会一并删除，无法恢复。",
-        okText: "删除",
+        title: green ? "移出已完成的卡片" : "删除子任务",
+        desc: green
+          ? "「" + esc(s ? s.title : "") + "」已完成。卡片会从列表移出，月历打卡、专注记录和积分都保留。"
+          : "「" + esc(s ? s.title : "") + "」及其子子任务、番茄钟记录会一并删除，无法恢复。",
+        okText: green ? "移出" : "删除",
       });
       if (ok) await deleteSubtask(id);
     } else if (renSub) {
@@ -1697,10 +1700,14 @@ function openSubtaskModal(sub, autoStart, skipRitual) {
   bind("mRenameSub", "click", () => renameSubtask(sub));
 
   bind("mDelSubBtn", "click", async () => {
+    const subItems = items.filter(i => i.subtask_id === sub.id);
+    const green = !!(sub.done || (subItems.length > 0 && subItems.every(i => i.done)));
     const ok = await confirmDialog({
-      title: "删除子任务",
-      desc: "「" + esc(sub.title) + "」及其子子任务、番茄钟记录会一并删除，无法恢复。",
-      okText: "删除",
+      title: green ? "移出已完成的卡片" : "删除子任务",
+      desc: green
+        ? "「" + esc(sub.title) + "」已完成。卡片会从列表移出，月历打卡、专注记录和积分都保留。"
+        : "「" + esc(sub.title) + "」及其子子任务、番茄钟记录会一并删除，无法恢复。",
+      okText: green ? "移出" : "删除",
     });
     if (!ok) { openSubtaskModal(sub); return; }
     if (timer && timer.subtaskId === sub.id) { clearInterval(timer.intervalId); timer = null; renderFloat(); }
@@ -4451,19 +4458,39 @@ function renderCatAddForm(pick, ref) {
 /* 写入结果判定：只有明确返回空数组才说明被 RLS 拦下 / 行不存在 */
 function blocked(rows) { return Array.isArray(rows) && rows.length === 0; }
 
-/* ============ 删除 / 重命名 ============ */
+/* ============ 删除 / 重命名 ============
+   删除子任务的两种口径（与 deleteTask 对齐）：
+   绿色已完成卡片 → 只「软删」：subtasks.deleted=true，卡片从列表消失，
+     但行和番茄钟记录都留在库里，月历打卡格、月专注时长原样保留；
+   未完成卡片 → 真删：数据库级联清掉子子任务/番茄钟记录，无法恢复。 */
 async function deleteSubtask(id) {
-  const rows = await db(cloud.database.from("subtasks").delete().eq("id", id).select());
-  if (blocked(rows)) {
-    toast("删除失败：这条数据可能不属于当前账号，请重新登录后再试", true);
-    return false;
+  const s = subtasks.find(x => x.id === id) || allSubtasks.find(x => x.id === id);
+  const its = items.filter(i => i.subtask_id === id);
+  const isGreen = !!(s && (s.done || (its.length > 0 && its.every(i => i.done))));
+  if (isGreen) {
+    const upd = await db(cloud.database.from("subtasks").update({ deleted: true }).eq("id", id).select());
+    if (blocked(upd)) {
+      toast("删除失败：这条数据可能不属于当前账号，请重新登录后再试", true);
+      return false;
+    }
+    const row = allSubtasks.find(x => x.id === id);
+    if (row) row.deleted = true; // 本地同步标记，月历继续用这行的 done_at 计数
+    else if (upd && upd.data && upd.data[0]) allSubtasks.push(upd.data[0]); // 本会话新建的卡片不在全量里，补进去
+  } else {
+    const rows = await db(cloud.database.from("subtasks").delete().eq("id", id).select());
+    if (blocked(rows)) {
+      toast("删除失败：这条数据可能不属于当前账号，请重新登录后再试", true);
+      return false;
+    }
+    allSubtasks = allSubtasks.filter(x => x.id !== id);
+    sessions = sessions.filter(x => x.subtask_id !== id); // 未完成卡片真删：本地同步清掉番茄钟记录
   }
   if (timer && timer.subtaskId === id) { clearInterval(timer.intervalId); timer = null; renderFloat(); }
-  subtasks = subtasks.filter(s => s.id !== id);
-  sessions = sessions.filter(x => x.subtask_id !== id);
+  if (anchor && anchor.subtaskId === id) clearAnchor();
+  subtasks = subtasks.filter(x => x.id !== id);
   items = items.filter(i => i.subtask_id !== id);
   renderAll();
-  toast("子任务已删除");
+  toast(isGreen ? "卡片已移出 · 月历打卡和专注记录都保留 📅" : "子任务已删除");
   return true;
 }
 
