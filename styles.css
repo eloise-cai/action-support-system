@@ -1848,3 +1848,128 @@ body.theme-retro {
 .cat-mrow.cat-dead { opacity: .55; justify-content: space-between; }
 .cm-dead-txt { font-size: 12.5px; color: var(--text-sub); }
 .cm-del.armed { color: var(--red); border-color: var(--red); font-weight: 700; }
+
+/* ================= 自选三件事 / 暂时不想做 / 排序 / 额外积分 ================= */
+
+/* 今日卡片上的加成预告标签 */
+.bonus-badge {
+  font-size: 11px; line-height: 1; padding: 3px 7px; border-radius: 999px;
+  background: rgba(255, 215, 107, .16); border: 1px solid rgba(255, 215, 107, .45);
+  color: #ffd76b; white-space: nowrap; flex-shrink: 0;
+}
+
+/* 今日三件事的空位：暗示可以再挑一件，而不是「你还差一件」 */
+.pick-slot {
+  min-height: 128px; display: flex; align-items: center; justify-content: center;
+  border: 1.5px dashed var(--border); border-radius: var(--radius);
+  background: transparent; color: var(--text-sub); font-size: 13px;
+}
+.pick-slot:hover { border-color: var(--accent); color: var(--text); }
+
+/* 排序（上下移） */
+.task-order { display: inline-flex; flex-direction: column; flex-shrink: 0; }
+.task-mv {
+  background: none; border: none; padding: 0 4px; line-height: 1.1;
+  font-size: 9px; color: var(--text-sub); opacity: .45;
+}
+.task-mv:hover { opacity: 1; color: var(--accent); }
+
+/* 收进「暂时不想做」 */
+.task-shelve {
+  background: none; border: none; font-size: 12px; line-height: 1; padding: 3px 4px;
+  color: var(--text-sub); border-radius: 6px; flex-shrink: 0; opacity: .55;
+}
+.task-shelve:hover { opacity: 1; }
+
+/* 「暂时不想做」盒子 */
+.shelved-box {
+  grid-column: 1 / -1; /* 盒子独占一整行，不挤进卡片网格 */
+  margin-top: 18px; border: 1px solid var(--border); border-radius: var(--radius);
+  background: var(--bg-soft); overflow: hidden;
+}
+.shelved-head {
+  width: 100%; display: flex; align-items: center; gap: 8px;
+  padding: 12px 14px; background: none; border: none;
+  font-size: 14px; font-weight: 600; color: var(--text); text-align: left;
+}
+.shelved-count {
+  font-size: 12px; color: var(--text-sub); background: rgba(127, 127, 127, .16);
+  border-radius: 999px; padding: 1px 8px;
+}
+.shelved-arrow { margin-left: auto; color: var(--text-sub); font-size: 12px; }
+.shelved-list { padding: 0 12px 12px; display: flex; flex-direction: column; gap: 8px; }
+.shelved-row {
+  display: flex; align-items: center; gap: 8px;
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: 10px; padding: 8px 12px;
+}
+.shelved-name { flex: 1; font-size: 13.5px; color: var(--text-sub); }
+.shelved-meta { font-size: 12px; color: var(--text-sub); opacity: .65; }
+.shelved-hint { font-size: 12px; color: var(--text-sub); margin: 2px 2px 0; line-height: 1.7; }
+
+/* 自选弹窗 */
+.modal-head h3 { margin: 0 0 6px; font-size: 17px; }
+.modal-desc { font-size: 13px; color: var(--text-sub); line-height: 1.75; margin: 0 0 12px; }
+.pick-list { max-height: 52vh; overflow-y: auto; display: flex; flex-direction: column; gap: 14px; padding-right: 4px; }
+.pick-group-t { font-size: 12.5px; color: var(--text-sub); margin-bottom: 6px; }
+.pick-item {
+  display: flex; align-items: center; gap: 10px; width: 100%; text-align: left;
+  padding: 9px 12px; border-radius: 10px; margin-bottom: 6px;
+  border: 1px solid var(--border); background: var(--card); color: var(--text); font-size: 13.5px;
+}
+.pick-item.is-on { border-color: var(--accent); background: rgba(79, 140, 255, .12); }
+.pick-box {
+  width: 18px; height: 18px; border-radius: 5px; border: 1.5px solid var(--border);
+  display: flex; align-items: center; justify-content: center; font-size: 11px; flex-shrink: 0;
+}
+.pick-item.is-on .pick-box { background: var(--accent); border-color: var(--accent); color: #fff; }
+.pick-name { flex: 1; }
+.pick-no { font-size: 12px; color: var(--accent); font-weight: 700; }
+
+/* 额外积分：烟花 + 「额外积分！」 */
+.bonus-layer {
+  position: fixed; inset: 0; z-index: 120; pointer-events: none;
+  display: flex; align-items: center; justify-content: center;
+  background: radial-gradient(circle at 50% 45%, rgba(4, 7, 14, .72), rgba(2, 4, 9, .88));
+  animation: bonusFade 2.5s ease forwards;
+}
+.fw { position: absolute; width: 2px; height: 2px; }
+.fw i {
+  position: absolute; left: 0; top: 0; width: 6px; height: 6px; border-radius: 50%;
+  opacity: 0; transform: rotate(var(--ang)) translateX(0);
+  animation: fwDot .95s cubic-bezier(.2, .7, .3, 1) forwards;
+}
+@keyframes fwDot {
+  0% { opacity: 0; transform: rotate(var(--ang)) translateX(2px) scale(.35); }
+  12% { opacity: 1; }
+  70% { opacity: .9; }
+  100% { opacity: 0; transform: rotate(var(--ang)) translateX(var(--dist)) scale(.95); }
+}
+.bonus-card { position: relative; text-align: center; padding: 0 24px; animation: bonusPop .5s cubic-bezier(.2, 1.5, .4, 1) both; }
+.bonus-title {
+  font-size: 30px; font-weight: 800; letter-spacing: 1px; color: #ffd76b;
+  text-shadow: 0 0 18px rgba(255, 215, 107, .6), 0 2px 0 rgba(0, 0, 0, .35);
+}
+.bonus-sub { font-size: 13px; color: #ffe9b0; margin-top: 9px; opacity: .92; }
+.bonus-pts {
+  font-size: 42px; font-weight: 900; color: #fff; margin-top: 2px;
+  text-shadow: 0 0 22px rgba(255, 143, 147, .75);
+}
+.lv1 .bonus-title { font-size: 20px; }
+.lv1 .bonus-pts { font-size: 26px; }
+@keyframes bonusPop { from { opacity: 0; transform: scale(.62); } to { opacity: 1; transform: scale(1); } }
+@keyframes bonusFade { 0% { opacity: 0; } 10% { opacity: 1; } 78% { opacity: 1; } 100% { opacity: 0; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .fw { display: none; }
+  .bonus-card { animation: none; }
+}
+
+/* 触屏：排序与收起按钮放大，避免点不到；窄屏标题换行防溢出 */
+@media (hover: none), (max-width: 640px) {
+  .task-head { gap: 6px; }
+  .task-title { white-space: normal; word-break: break-all; line-height: 1.35; }
+  .task-mv { font-size: 11px; padding: 4px 6px; opacity: .7; }
+  .task-shelve { font-size: 13px; padding: 4px 6px; opacity: .75; }
+  .pick-item { padding: 11px 12px; }
+}

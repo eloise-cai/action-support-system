@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>行动支持系统</title>
-<link rel="stylesheet" href="styles.css?v=20261110b">
+<link rel="stylesheet" href="styles.css?v=20261110c">
 <link rel="stylesheet" href="companion.css?v=20261105e">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🍅</text></svg>">
 </head>
@@ -60,7 +60,7 @@
       <div class="pane-head">
         <div>
           <h2>任务列表</h2>
-          <p class="pane-desc">默认只显示今天最重要的 3 件事，做完一件是一件。卡住了就用「只做 2 分钟」起步，玩回来后点「上次停在这里」接着做</p>
+          <p class="pane-desc">默认只显示今天的 3 件事（可以自己挑），做完一件是一件。不想面对的任务点 🧊 收进「暂时不想做」，随时能取回。卡住了就用「只做 2 分钟」起步，玩回来后点「上次停在这里」接着做</p>
         </div>
         <button id="addTaskBtn" class="btn primary">＋ 新建任务</button>
       </div>
@@ -76,6 +76,7 @@
       <p class="spark-tip">不想动的时候，就先做 2 分钟试试。2 分钟后想停随时可以停，多半你会想继续做完。</p>
       <div class="mode-switch">
         <button id="modeTodayBtn" class="mode-btn active">🎯 今日三件事</button>
+        <button id="pickBtn" class="mode-btn pick-btn">✎ 自选</button>
         <button id="modeAllBtn" class="mode-btn">全部任务</button>
       </div>
       <div id="cardsGrid" class="cards-grid"></div>
@@ -147,7 +148,7 @@
           <span>今日获得 <b id="ptsToday">0</b></span>
         </div>
       </div>
-      <div class="pts-rules">赚分规则：完成子任务 <b>+10</b> · 子任务全清空 <b>+5</b> · 完成子子任务 <b>+3</b> · 专注每 5 分钟 <b>+1</b>（取消完成会扣回，不自欺）</div>
+      <div class="pts-rules">赚分规则：完成子任务 <b>+10</b> · 子任务全清空 <b>+5</b> · 完成子子任务 <b>+3</b> · 专注每 5 分钟 <b>+1</b>（取消完成会扣回，不自欺）<br>额外奖励：今日三件事内完成 <b>+50%</b> · 从「暂时不想做」取回 <b>+3</b> · 取回后再完成 <b>双倍</b></div>
       <h3 class="pts-sub-title">🎨 皮肤挑战活动 <small style="font-weight:400;color:var(--text-sub);font-size:12px">达成挑战解锁主题，已解锁永久保留</small></h3>
       <div id="skinChallenges" class="skin-challenges"></div>
       <h3 class="pts-sub-title">🏅 徽章墙 <small style="font-weight:400;color:var(--text-sub);font-size:12px">按周期点亮，下个周期没做到就会熄灭</small></h3>
@@ -514,6 +515,6 @@
 
 <script src="https://cdn.jsdelivr.net/npm/@tencent-ai/workbuddy-cloud-sdk@dev/lib/index.global.js"></script>
 <script src="companion.js?v=20261105e"></script>
-<script src="app.js?v=20261110b"></script>
+<script src="app.js?v=20261110c"></script>
 </body>
 </html>
