@@ -1926,24 +1926,52 @@ body.theme-retro {
 .pick-name { flex: 1; }
 .pick-no { font-size: 12px; color: var(--accent); font-weight: 700; }
 
-/* 额外积分：烟花 + 「额外积分！」 */
+/* 额外积分：烟花（上升弹体→爆心闪光→径向碎星带重力）+ 「额外积分！」 */
 .bonus-layer {
   position: fixed; inset: 0; z-index: 120; pointer-events: none;
   display: flex; align-items: center; justify-content: center;
   background: radial-gradient(circle at 50% 45%, rgba(4, 7, 14, .72), rgba(2, 4, 9, .88));
-  animation: bonusFade 2.5s ease forwards;
+  animation: bonusFade 3s ease forwards;
+}
+.bonus-layer.lv2 { animation-duration: 4.3s; }
+/* 上升弹体：从屏幕底部升到爆点，带尾焰光晕 */
+.rocket {
+  position: absolute; top: 100%; width: 3px; height: 12px; border-radius: 2px;
+  background: linear-gradient(to top, rgba(255, 224, 130, 0), #ffe9b0);
+  box-shadow: 0 0 9px 2px rgba(255, 215, 107, .5);
+  opacity: 0;
+  animation: fwRise .6s cubic-bezier(.35, .6, .75, 1) forwards;
+}
+@keyframes fwRise {
+  0% { top: 100%; opacity: 0; }
+  14% { opacity: .95; }
+  82% { opacity: .9; }
+  100% { top: var(--by, 40%); opacity: 0; }
 }
 .fw { position: absolute; width: 2px; height: 2px; }
+/* 爆心闪光：白热一闪，向外扩张消散 */
+.fw .flash {
+  position: absolute; border-radius: 50%;
+  background: radial-gradient(circle, rgba(255, 255, 255, .95) 0%, rgba(255, 236, 190, .5) 42%, transparent 72%);
+  opacity: 0; transform: scale(.2);
+  animation: fwFlash .42s ease-out forwards;
+}
+@keyframes fwFlash {
+  0% { opacity: 0; transform: scale(.2); }
+  22% { opacity: 1; transform: scale(1.2); }
+  100% { opacity: 0; transform: scale(2.1); }
+}
+/* 碎星：径向炸开后受重力呈弧线下坠，白热核心渐变到弹色 */
 .fw i {
-  position: absolute; left: 0; top: 0; width: 6px; height: 6px; border-radius: 50%;
-  opacity: 0; transform: rotate(var(--ang)) translateX(0);
-  animation: fwDot .95s cubic-bezier(.2, .7, .3, 1) forwards;
+  position: absolute; left: 0; top: 0; border-radius: 50%;
+  opacity: 0; transform: translate(2px, 2px) scale(.3);
+  animation: fwDot 1.3s cubic-bezier(.12, .62, .36, 1) forwards;
 }
 @keyframes fwDot {
-  0% { opacity: 0; transform: rotate(var(--ang)) translateX(2px) scale(.35); }
-  12% { opacity: 1; }
-  70% { opacity: .9; }
-  100% { opacity: 0; transform: rotate(var(--ang)) translateX(var(--dist)) scale(.95); }
+  0% { opacity: 0; transform: translate(2px, 2px) scale(.3); }
+  10% { opacity: 1; transform: translate(calc(var(--dx) * .12), calc(var(--dy) * .12)) scale(1); }
+  52% { opacity: .95; transform: translate(calc(var(--dx) * .7), calc(var(--dy) * .7)) scale(.9); }
+  100% { opacity: 0; transform: translate(var(--dx), var(--dy)) scale(.5); }
 }
 .bonus-card { position: relative; text-align: center; padding: 0 24px; animation: bonusPop .5s cubic-bezier(.2, 1.5, .4, 1) both; }
 .bonus-title {
@@ -1961,7 +1989,7 @@ body.theme-retro {
 @keyframes bonusFade { 0% { opacity: 0; } 10% { opacity: 1; } 78% { opacity: 1; } 100% { opacity: 0; } }
 
 @media (prefers-reduced-motion: reduce) {
-  .fw { display: none; }
+  .fw, .rocket { display: none; }
   .bonus-card { animation: none; }
 }
 

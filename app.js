@@ -945,31 +945,71 @@ function celebrate() {
 }
 
 /* 额外积分弹层：烟花绽放 + 「额外积分！」（参考游戏领奖界面）
-   level 1 = 轻（取回任务 +3），level 2 = 重（完成加成，多组烟花 + 更大的字） */
+   level 1 = 轻（取回任务 +3），level 2 = 重（完成加成，更多组烟花 + 更大的字）
+   视觉：先上升弹体 → 到顶爆心闪光 → 径向炸开（白热核心渐变到弹色），
+   大中小簇混合、受重力下坠，模仿真实烟花 */
 function bonusBurst(opts) {
   const o = opts || {};
   const lvl = o.level === 1 ? 1 : 2;
   try {
     const layer = document.createElement("div");
     layer.className = "bonus-layer lv" + lvl;
-    const colors = ["#ffd76b", "#ff8f93", "#8ab4ff", "#5ee0b5", "#c9a2ff", "#ffa94d"];
-    const bursts = lvl === 2 ? 4 : 2;
-    for (let b = 0; b < bursts; b++) {
+    const rnd = (a, b) => a + Math.random() * (b - a);
+    // 每发烟花：[簇型, 起爆延迟]，大中小簇交错铺满
+    const plan = lvl === 2
+      ? [["big", 0], ["small", .3], ["mid", .48], ["big", .72], ["small", 1.02], ["mid", 1.26], ["small", 1.56]]
+      : [["mid", 0], ["small", .34], ["big", .62]];
+    plan.forEach(([size, bd]) => {
+      const bx = rnd(12, 88), by = rnd(12, 52);
+      const rise = rnd(.45, .62);              // 弹体上升时长
+      const conf = size === "big"
+        ? { dots: 26, ring2: 14, dist: rnd(68, 108), dsz: 7, spread: .46 }
+        : size === "mid"
+        ? { dots: 18, ring2: 0, dist: rnd(46, 68), dsz: 6, spread: .42 }
+        : { dots: 12, ring2: 0, dist: rnd(26, 44), dsz: 4, spread: .38 };
+      const hue = Math.floor(rnd(0, 360));     // 每发单色系（真实烟花一弹一色）
+      const col = "hsl(" + hue + " 92% 66%)";
+      // 上升弹体（带尾焰光晕）
+      const rk = document.createElement("div");
+      rk.className = "rocket";
+      rk.style.left = bx.toFixed(2) + "%";
+      rk.style.setProperty("--by", by.toFixed(2) + "%");
+      rk.style.animationDelay = bd.toFixed(2) + "s";
+      rk.style.animationDuration = rise.toFixed(2) + "s";
+      layer.appendChild(rk);
+      // 爆点：闪光核心 + 径向碎星
       const fw = document.createElement("div");
       fw.className = "fw";
-      fw.style.left = (14 + Math.random() * 72) + "%";
-      fw.style.top = (14 + Math.random() * 48) + "%";
-      fw.style.animationDelay = (b * 0.2) + "s";
-      for (let i = 0; i < 14; i++) {
-        const d = document.createElement("i");
-        d.style.setProperty("--ang", ((360 / 14) * i + Math.random() * 10) + "deg");
-        d.style.setProperty("--dist", (44 + Math.random() * 38) + "px");
-        d.style.background = colors[(i + b) % colors.length];
-        d.style.animationDelay = (b * 0.2) + "s";
-        fw.appendChild(d);
-      }
+      fw.style.left = bx.toFixed(2) + "%";
+      fw.style.top = by.toFixed(2) + "%";
+      const t0 = (bd + rise).toFixed(2);       // 碎星在弹体到位后炸开
+      const fl = document.createElement("b");
+      fl.className = "flash";
+      const fsz = size === "big" ? 34 : size === "mid" ? 22 : 14;
+      fl.style.width = fsz + "px"; fl.style.height = fsz + "px";
+      fl.style.left = -fsz / 2 + "px"; fl.style.top = -fsz / 2 + "px";
+      fl.style.animationDelay = t0 + "s";
+      fw.appendChild(fl);
+      const mkDots = (n, mul, dia) => {
+        for (let i = 0; i < n; i++) {
+          const ang = (360 / n) * i + rnd(-9, 9);
+          const rad = ang * Math.PI / 180;
+          const d = conf.dist * mul * rnd(.82, 1.12);
+          const dx = Math.cos(rad) * d;
+          const dy = Math.sin(rad) * d + d * conf.spread; // 重力：越飞越往下坠
+          const g = document.createElement("i");
+          g.style.width = dia + "px"; g.style.height = dia + "px";
+          g.style.setProperty("--dx", dx.toFixed(1) + "px");
+          g.style.setProperty("--dy", dy.toFixed(1) + "px");
+          g.style.background = "radial-gradient(circle at 32% 32%, #fff 0%, " + col + " 58%)";
+          g.style.animationDelay = t0 + "s";
+          fw.appendChild(g);
+        }
+      };
+      mkDots(conf.dots, 1, conf.dsz);
+      if (conf.ring2) mkDots(conf.ring2, .5, Math.max(3, conf.dsz - 2)); // 内环两层感
       layer.appendChild(fw);
-    }
+    });
     const card = document.createElement("div");
     card.className = "bonus-card";
     card.innerHTML = '<div class="bonus-title">' + esc(o.title || "额外积分！") + "</div>" +
@@ -977,7 +1017,7 @@ function bonusBurst(opts) {
       '<div class="bonus-pts">+' + (o.points || 0) + "</div>";
     layer.appendChild(card);
     document.body.appendChild(layer);
-    setTimeout(() => layer.remove(), lvl === 2 ? 2500 : 1900);
+    setTimeout(() => layer.remove(), lvl === 2 ? 4300 : 3000);
   } catch (e) {}
   try {
     const Ctx = window.AudioContext || window.webkitAudioContext;
