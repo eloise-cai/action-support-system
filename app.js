@@ -48,6 +48,7 @@ let subtasks = [];
 let sessions = [];
 let items = []; // 第三层：子任务下的子项
 let allSubtasks = []; // 含「已归档任务」下的子任务：月历打卡要认它们
+let allItems = []; // 全量子项（含已移出卡片 / 归档任务下的）：徽章计数要认它们
 let archivedTaskIds = new Set(); // 已沉淀（归档）的任务：出列表 / 分层 / 统计，但记录留在库里
 let archivedTasks = []; // 已沉淀任务的完整行（供「已沉淀」区展示与恢复）
 let points = []; // 积分流水
@@ -457,8 +458,9 @@ async function loadAll() {
   allSubtasks = s.data || [];                         // 全量含软删（deleted=true）的卡片：月历打卡仍要认它们
   subtasks = allSubtasks.filter(x => !archivedTaskIds.has(x.task_id) && !x.deleted);
   sessions = p.data || [];                            // 全量：归档任务的历史专注仍要计入月历
+  allItems = it.data || [];                            // 全量子项：徽章计数要认已移出卡片下的完成项
   const goneSubIds = new Set(allSubtasks.filter(x => archivedTaskIds.has(x.task_id) || x.deleted).map(x => x.id));
-  items = (it.data || []).filter(x => !goneSubIds.has(x.subtask_id));
+  items = allItems.filter(x => !goneSubIds.has(x.subtask_id));
   points = pt.data || [];
   rewards = rw.data || [];
   goals = gl.data || [];
@@ -580,7 +582,7 @@ bind("userLabel", "click", () => {
 
 cloud.auth.onAuthStateChange((event) => {
   if (event === "SIGNED_OUT") {
-    tasks = []; subtasks = []; sessions = []; items = []; events = [];
+    tasks = []; subtasks = []; allSubtasks = []; sessions = []; items = []; allItems = []; events = [];
     points = []; rewards = []; goals = []; moneyRecords = []; userCode = null; profileId = null; moneyPeriod = "week"; moneyAnchor = null;
     moneyBase = { save: 0, invest: 0 };
     moneyBreakdown = { save: [], invest: [] };
@@ -1054,12 +1056,25 @@ bind("cardsGrid", "keydown", (e) => {
   }
 });
 
+/* 新建行同时登记到「活跃列表」和「全量列表」：
+   两边共享同一个对象引用，勾选/取消会同时反映，徽章计数与月历统计不会漏新数据 */
+function trackSubtask(row) {
+  if (!row) return;
+  subtasks.push(row);
+  if (!allSubtasks.some(x => x.id === row.id)) allSubtasks.push(row);
+}
+function trackItem(row) {
+  if (!row) return;
+  items.push(row);
+  if (!allItems.some(x => x.id === row.id)) allItems.push(row);
+}
+
 async function addSubtask(taskId, input) {
   if (!input) return;
   const title = input.value.trim();
   if (!title) { toast("请输入子任务内容", true); return; }
   const rows = await db(cloud.database.from("subtasks").insert({ task_id: taskId, title }).select());
-  if (rows && rows[0]) subtasks.push(rows[0]);
+  if (rows && rows[0]) trackSubtask(rows[0]);
   renderAll();
   /* 输入框被 renderAll 重建：找到新的那个并保持焦点，方便一口气加完所有阶段 */
   const next = document.querySelector('input[data-addsub="' + taskId + '"]');
@@ -1145,7 +1160,7 @@ async function quickCapture() {
     const rows2 = await db(cloud.database.from("subtasks").insert({
       task_id: task.id, title: p.subName, est_minutes: p.minutes,
     }).select());
-    if (rows2 && rows2[0]) subtasks.push(rows2[0]);
+    if (rows2 && rows2[0]) trackSubtask(rows2[0]);
     input.value = "";
     renderAll();
     toast("已收进「" + task.title + "」：" + p.subName + (p.minutes ? "（建议 " + p.minutes + " 分钟）" : ""));
@@ -1396,7 +1411,7 @@ async function addItem(subtaskId, input) {
   const title = input.value.trim();
   if (!title) { toast("请输入子子任务内容", true); return; }
   const rows = await db(cloud.database.from("subtask_items").insert({ subtask_id: subtaskId, title }).select());
-  if (rows && rows[0]) items.push(rows[0]);
+  if (rows && rows[0]) trackItem(rows[0]);
   input.value = "";
   renderAll();
 }
@@ -1472,6 +1487,7 @@ function openItemModal(it) {
     const rows = await db(cloud.database.from("subtask_items").delete().eq("id", it.id).select());
     if (blocked(rows)) { toast("删除失败，请重新登录后再试", true); return; }
     items = items.filter(x => x.id !== it.id);
+    allItems = allItems.filter(x => x.id !== it.id);
     closeModal();
     renderAll();
   });
@@ -1563,6 +1579,7 @@ async function onSubtaskGridClick(e) {
       const rows = await db(cloud.database.from("subtask_items").delete().eq("id", id).select());
       if (blocked(rows)) { toast("删除失败，请重新登录后再试", true); return; }
       items = items.filter(i => i.id !== id);
+      allItems = allItems.filter(i => i.id !== id);
       renderAll();
     } else if (checkItem) {
       e.stopPropagation();
@@ -1617,7 +1634,7 @@ bind("addLayerCardBtn", "click", () => {
     const taskId = +$id("mCardTask").value;
     if (!title) { toast("请输入卡片名称", true); return; }
     const rows = await db(cloud.database.from("subtasks").insert({ task_id: taskId, title }).select());
-    if (rows && rows[0]) subtasks.push(rows[0]);
+    if (rows && rows[0]) trackSubtask(rows[0]);
     closeModal();
     renderAll();
     toast("卡片已创建");
@@ -2982,13 +2999,15 @@ const BADGE_GROUPS = { day: "每日", week: "每周", month: "每月" };
 function toLocalDateStr(iso) {
   try { return localDateStr(new Date(iso)); } catch (e) { return null; }
 }
-/* 完成计数：子任务 done_at + 子子任务 done_at（都在本周期内才算） */
+/* 完成计数：子任务 done_at + 子子任务 done_at（都在本周期内才算）
+   用全量数组（allSubtasks / allItems）：删除卡片只是把卡片移出列表，
+   历史完成记录仍然算数，徽章不会因为删卡片而熄灭 */
 function periodDoneCount(period) {
   const now = new Date();
   const map = {};
   const bump = (done, at) => { if (!done || !at) return; const k = toLocalDateStr(at); if (k) map[k] = (map[k] || 0) + 1; };
-  for (const s of subtasks) bump(s.done, s.done_at);
-  for (const i of items) bump(i.done, i.done_at);
+  for (const s of allSubtasks) bump(s.done, s.done_at);
+  for (const i of allItems) bump(i.done, i.done_at);
   if (period === "day") return map[localDateStr(now)] || 0;
   if (period === "week") {
     const start = weekStartOf(now);
@@ -4709,7 +4728,7 @@ function blocked(rows) { return Array.isArray(rows) && rows.length === 0; }
    未完成卡片 → 真删：数据库级联清掉子子任务/番茄钟记录，无法恢复。 */
 async function deleteSubtask(id) {
   const s = subtasks.find(x => x.id === id) || allSubtasks.find(x => x.id === id);
-  const its = items.filter(i => i.subtask_id === id);
+  const its = allItems.filter(i => i.subtask_id === id);
   const isGreen = !!(s && (s.done || (its.length > 0 && its.every(i => i.done))));
   if (isGreen) {
     const upd = await db(cloud.database.from("subtasks").update({ deleted: true }).eq("id", id).select());
@@ -4727,6 +4746,7 @@ async function deleteSubtask(id) {
       return false;
     }
     allSubtasks = allSubtasks.filter(x => x.id !== id);
+    allItems = allItems.filter(i => i.subtask_id !== id); // 真删：子项在库里已被级联清掉
     sessions = sessions.filter(x => x.subtask_id !== id); // 未完成卡片真删：本地同步清掉番茄钟记录
   }
   if (timer && timer.subtaskId === id) { clearInterval(timer.intervalId); timer = null; renderFloat(); }
@@ -4745,7 +4765,7 @@ async function deleteSubtask(id) {
 async function deleteTask(id) {
   const goneSubs = subtasks.filter(s => s.task_id === id);
   const goneSubIds = goneSubs.map(s => s.id);
-  const goneItems = items.filter(i => goneSubIds.indexOf(i.subtask_id) >= 0);
+  const goneItems = allItems.filter(i => goneSubIds.indexOf(i.subtask_id) >= 0);
   const wasDone = goneSubs.length > 0 && goneSubs.every(s => s.done);
 
   if (wasDone) {
@@ -4779,6 +4799,7 @@ async function deleteTask(id) {
     }
     sessions = sessions.filter(x => x.task_id !== id);
     allSubtasks = allSubtasks.filter(x => x.task_id !== id);
+    allItems = allItems.filter(i => goneSubIds.indexOf(i.subtask_id) < 0);
     points = points.filter(p => goneLedger.indexOf(p) < 0);
   }
 
