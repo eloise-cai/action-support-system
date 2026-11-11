@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>皮肤预览</title>
+<link rel="stylesheet" href="styles.css">
+<style>
+  html, body { min-height: 100%; }
+  body { padding: 0 0 40px; }
+  .pv-wrap { max-width: 1060px; margin: 0 auto; }
+</style>
+</head>
+<body>
+<!-- 顶栏 -->
+<div class="topbar">
+  <div class="brand">🍅 行动支持系统</div>
+  <div class="top-actions">
+    <span class="pts-chip">🪙 1280</span>
+    <span class="user-label">173****4189</span>
+    <button class="btn ghost small">退出</button>
+  </div>
+</div>
+<div class="tabs">
+  <button class="tab active">任务</button>
+  <button class="tab">统计</button>
+  <button class="tab">月历</button>
+  <button class="tab">积分奖励</button>
+  <button class="tab">🐉 钟磬</button>
+</div>
+
+<main>
+  <div class="pane-head">
+    <div>
+      <h2>今天要做的事</h2>
+      <p class="pane-desc">自选三件事之外的，都可以慢慢来</p>
+    </div>
+    <button class="btn primary">＋ 新建任务</button>
+  </div>
+
+  <div class="cards-grid">
+    <div class="task-card" style="--card-color:var(--lv-high-bg);--card-border:var(--lv-high-bd);--dot-color:var(--lv-high-dot)">
+      <div class="task-head">
+        <span class="task-dot"></span><span class="cat-badge">💼</span>
+        <span class="task-title">写周报并存档</span>
+        <button class="task-shelve">🧊</button>
+      </div>
+      <div class="task-meta">工作 · 2 个子任务 · 专注 1 小时 25 分</div>
+      <div class="sub-grid">
+        <span class="sub-chip"><span class="sub-check"></span><span class="sub-name">整理数据</span></span>
+        <span class="sub-chip is-done"><span class="sub-check">✓</span><span class="sub-name">写结论</span><span class="sub-time">25′</span></span>
+        <span class="sub-chip"><span class="sub-check"></span><span class="sub-name">发给组里</span></span>
+      </div>
+      <div class="progress-bar"><div class="progress-fill" style="width:52%"></div></div>
+    </div>
+
+    <div class="task-card" style="--card-color:var(--lv-mid-bg);--card-border:var(--lv-mid-bd);--dot-color:var(--lv-mid-dot)">
+      <div class="task-head">
+        <span class="task-dot"></span><span class="cat-badge">📚</span>
+        <span class="task-title">读书 · 反脆弱 第三章</span>
+      </div>
+      <div class="task-meta">学习 · 今天 20:00 前</div>
+      <div class="sub-grid">
+        <span class="sub-chip"><span class="sub-check"></span><span class="sub-name">读 20 页</span></span>
+        <span class="sub-chip"><span class="sub-check"></span><span class="sub-name">写三行笔记</span></span>
+      </div>
+      <div class="add-subtask">
+        <input placeholder="加一个子任务…">
+        <button>＋</button>
+      </div>
+    </div>
+
+    <div class="task-card done-card" style="--card-color:var(--lv-low-bg);--card-border:var(--lv-low-bd);--dot-color:var(--lv-low-dot)">
+      <div class="task-head">
+        <span class="task-dot"></span><span class="cat-badge">🏠</span>
+        <span class="task-title">整理房间</span>
+        <button class="task-settle">✓</button>
+      </div>
+      <div class="task-meta">生活 · 今天 10:06 完成 · 已移出</div>
+      <div class="sub-grid">
+        <span class="sub-chip is-done"><span class="sub-check">✓</span><span class="sub-name">收纳衣服</span></span>
+        <span class="sub-chip is-done"><span class="sub-check">✓</span><span class="sub-name">擦桌子</span></span>
+      </div>
+      <div class="bonus-badge">＋5 今日三件事</div>
+    </div>
+  </div>
+
+  <div style="margin-top:22px" class="stat-row">
+    <div class="stat-top"><span class="stat-title">本月专注</span><span class="stat-cat">工作</span></div>
+    <div class="stat-nums">任务 <b>29</b> 个 · 专注 <b class="n-time">15 小时 21 分</b> · 积分 <b class="n-done">+320</b></div>
+    <div class="progress-bar" style="margin-top:10px"><div class="progress-fill" style="width:64%"></div></div>
+  </div>
+
+  <div class="pts-hero" style="margin-top:16px">
+    <div class="pts-balance"><span>1280</span><small>可用积分</small></div>
+    <div class="pts-stats"><span>累计 <b>4320</b></span><span>已兑换 <b>3040</b></span></div>
+  </div>
+
+  <div style="margin-top:16px;display:flex;gap:10px;flex-wrap:wrap">
+    <button class="btn primary">主要按钮</button>
+    <button class="btn ghost">次要按钮</button>
+    <button class="btn danger small">危险</button>
+    <span class="ddl-chip ddl-soon">今天 20:00</span>
+    <span class="ddl-chip ddl-over">已逾期</span>
+  </div>
+
+  <div style="margin-top:16px" class="heat-wrap">
+    <div style="display:flex;gap:5px">
+      <span class="heat-cell blank"></span><span class="heat-cell lv1">1</span><span class="heat-cell lv2">3</span>
+      <span class="heat-cell lv3">6</span><span class="heat-cell lv4">9</span>
+      <span class="heat-cell today">4</span><span class="heat-cell future">·</span>
+    </div>
+  </div>
+
+  <div class="cards-grid" style="margin-top:18px">
+    <div class="checkin-row">
+      <div class="ci-top"><span class="ci-name">跑步</span><span class="ci-cnt">本月 6 次</span></div>
+      <div class="ci-grid">
+        <span class="ci-cell checked">1</span><span class="ci-cell checked">2</span><span class="ci-cell">3</span>
+        <span class="ci-cell today">4</span><span class="ci-cell future">5</span><span class="ci-cell future">6</span>
+      </div>
+    </div>
+    <div class="checkin-row">
+      <div class="ci-top"><span class="ci-name">早睡</span><span class="ci-cnt">本月 2 次</span></div>
+      <div class="ci-grid">
+        <span class="ci-cell">1</span><span class="ci-cell checked">2</span><span class="ci-cell future">3</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-box" style="margin:22px auto 0;max-width:420px">
+    <h3>新建任务</h3>
+    <label class="modal-label">任务名称</label>
+    <input class="modal-input" value="整理这周的研报">
+    <label class="modal-label">优先级</label>
+    <div class="level-picker">
+      <button class="level-opt sel-high">重要紧急</button>
+      <button class="level-opt">中等优先</button>
+      <button class="level-opt">较低优先</button>
+    </div>
+    <div class="modal-actions"><button class="btn ghost">取消</button><button class="btn primary">保存</button></div>
+  </div>
+
+  <div class="skin-card" style="margin:18px auto 0;max-width:420px">
+    <div class="skin-preview skin-prev-forest"><span>🌲</span></div>
+    <div class="skin-info">
+      <div class="skin-name-row"><b>森林</b><span class="skin-tone-tag">雾林晨光</span></div>
+      <div class="skin-tones"><i style="background:#f4f8f2"></i><i style="background:#4d7757"></i><i style="background:#c39257"></i></div>
+      <small>累计专注满 5 小时解锁</small>
+      <span class="skin-cur">✓ 使用中</span>
+    </div>
+  </div>
+</main>
+<script>
+  const t = new URLSearchParams(location.search).get("t");
+  if (t && t !== "default") document.body.classList.add("theme-" + t);
+</script>
+</body>
+</html>

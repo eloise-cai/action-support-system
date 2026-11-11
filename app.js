@@ -10,10 +10,11 @@ const cloud = WorkBuddyCloud.createWorkBuddyCloud({
   publishableKey: publicConfig.publishableKey,
 });
 
+/* 卡片配色走 CSS 变量：默认深色皮肤与森林/星空/手账各自定义一套，随皮肤自动切换 */
 const LEVELS = {
-  high: { label: "重要紧急", color: "#ff8f93", bg: "#4b2b33", border: "rgba(229,72,77,.5)" },
-  mid: { label: "中等优先", color: "#ffc76b", bg: "#463a26", border: "rgba(245,166,35,.45)" },
-  low: { label: "较低优先", color: "#8ab4ff", bg: "#26374f", border: "rgba(79,140,255,.45)" },
+  high: { label: "重要紧急", color: "var(--lv-high-dot)", bg: "var(--lv-high-bg)", border: "var(--lv-high-bd)" },
+  mid: { label: "中等优先", color: "var(--lv-mid-dot)", bg: "var(--lv-mid-bg)", border: "var(--lv-mid-bd)" },
+  low: { label: "较低优先", color: "var(--lv-low-dot)", bg: "var(--lv-low-bg)", border: "var(--lv-low-bd)" },
 };
 
 /* 任务分类（内置 + 用户自定义，自定义存 user_profiles.custom_categories JSON） */
@@ -3135,10 +3136,10 @@ function renderExpDonut(byCat, totalExp, unit) {
   });
   el.innerHTML =
     '<svg viewBox="0 0 140 140" width="132" height="132">' +
-    '<circle cx="70" cy="70" r="54" fill="none" stroke="rgba(255,255,255,.08)" stroke-width="17"></circle>' +
+    '<circle cx="70" cy="70" r="54" fill="none" style="stroke:var(--w08)" stroke-width="17"></circle>' +
     '<g transform="rotate(-90 70 70)">' + segs + "</g>" +
-    '<text x="70" y="65" text-anchor="middle" font-size="9.5" fill="rgba(255,255,255,.55)">当期支出</text>' +
-    '<text x="70" y="81" text-anchor="middle" font-size="13" font-weight="700" fill="#fff">' + (totalExp >= 10000 ? (Math.round(totalExp / 100) / 100) + "万" : Math.round(totalExp)) + "</text>" +
+    '<text x="70" y="65" text-anchor="middle" font-size="9.5" style="fill:var(--text-sub)">当期支出</text>' +
+    '<text x="70" y="81" text-anchor="middle" font-size="13" font-weight="700" style="fill:var(--text)">' + (totalExp >= 10000 ? (Math.round(totalExp / 100) / 100) + "万" : Math.round(totalExp)) + "</text>" +
     "</svg>";
   if (lg) lg.innerHTML = rows.map((r, i) => {
     const color = EXP_COLORS[i % EXP_COLORS.length];
@@ -3337,10 +3338,10 @@ function openMoneyDetail(kind) {
     });
     $id("mBDChart").innerHTML =
       '<svg viewBox="0 0 140 140" width="128" height="128">' +
-      '<circle cx="70" cy="70" r="54" fill="none" stroke="rgba(255,255,255,.08)" stroke-width="17"></circle>' +
+      '<circle cx="70" cy="70" r="54" fill="none" style="stroke:var(--w08)" stroke-width="17"></circle>' +
       '<g transform="rotate(-90 70 70)">' + segs + "</g>" +
-      '<text x="70" y="65" text-anchor="middle" font-size="9.5" fill="rgba(255,255,255,.55)">净持有</text>' +
-      '<text x="70" y="81" text-anchor="middle" font-size="13" font-weight="700" fill="#fff">' + (total >= 10000 ? (Math.round(total / 100) / 100) + "万" : Math.round(total)) + "</text>" +
+      '<text x="70" y="65" text-anchor="middle" font-size="9.5" style="fill:var(--text-sub)">净持有</text>' +
+      '<text x="70" y="81" text-anchor="middle" font-size="13" font-weight="700" style="fill:var(--text)">' + (total >= 10000 ? (Math.round(total / 100) / 100) + "万" : Math.round(total)) + "</text>" +
       "</svg>";
     const unalloc = Math.round((total - allocated) * 100) / 100;
     $id("mBDLegend").innerHTML =
@@ -5542,12 +5543,12 @@ bind("ygTodayBtn", "click", () => { ygView = null; renderGoals(); });
 /* ============ 主题皮肤（C2）：挑战解锁 + ID 旁选择，已解锁永久保留 ============ */
 let currentTheme = "default";
 const THEMES = [
-  { id: "default", name: "深空蓝", icon: "🌌", desc: "默认主题，永远随身", challenge: null },
-  { id: "forest", name: "森林", icon: "🌲", desc: "累计专注满 5 小时解锁",
+  { id: "default", name: "深空蓝", icon: "🌌", desc: "默认主题，永远随身", tone: "深蓝夜航", palette: ["#0f1726", "#4f8cff", "#2fbf71"], challenge: null },
+  { id: "forest", name: "森林", icon: "🌲", desc: "晨雾苔绿 · 莫兰迪浅色 · 累计专注满 5 小时解锁", tone: "雾林晨光", palette: ["#f4f8f2", "#4d7757", "#c39257"],
     challenge: { label: "累计专注时长", target: 300, unit: " 分钟", progress: () => Math.round(sessions.reduce((a, b) => a + (b.duration_seconds || 0), 0) / 60) } },
-  { id: "starry", name: "星空", icon: "⭐", desc: "累计获得 500 积分解锁",
+  { id: "starry", name: "星空", icon: "⭐", desc: "夜航星尘 · 低眩光暗色 · 累计获得 500 积分解锁", tone: "夜航星野", palette: ["#12131f", "#a99ae6", "#7ecfa8"],
     challenge: { label: "累计获得积分", target: 500, unit: " 分", progress: () => pointsEarnedTotal() } },
-  { id: "retro", name: "复古手账", icon: "📔", desc: "完成 1 个长线任务解锁",
+  { id: "retro", name: "复古手账", icon: "📔", desc: "暖纸砖红 · 手账质感 · 完成 1 个长线任务解锁", tone: "纸间手账", palette: ["#f4efe5", "#a95f47", "#55775c"],
     challenge: { label: "已完成长线任务", target: 1, unit: " 个", progress: () => longtermTasks.filter(x => !x.parent_id && x.done).length } },
 ];
 function themeUnlocked(id) {
@@ -5586,7 +5587,10 @@ function openSkinModal() {
     }
     return '<div class="skin-card' + (unlocked ? "" : " skin-locked") + (currentTheme === t.id ? " skin-active" : "") + '">' +
       '<div class="skin-preview skin-prev-' + t.id + '"><span>' + t.icon + "</span></div>" +
-      '<div class="skin-info"><b>' + t.name + "</b><small>" + t.desc + "</small>" + foot + "</div></div>";
+      '<div class="skin-info"><div class="skin-name-row"><b>' + t.name + "</b>" +
+      (t.tone ? '<span class="skin-tone-tag">' + t.tone + "</span>" : "") + "</div>" +
+      (t.palette ? '<div class="skin-tones">' + t.palette.map(c => '<i style="background:' + c + '"></i>').join("") + "</div>" : "") +
+      "<small>" + t.desc + "</small>" + foot + "</div></div>";
   }).join("");
   openModal(
     "<h3>🎨 主题皮肤</h3>" +
