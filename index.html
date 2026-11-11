@@ -4,8 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>行动支持系统</title>
-<link rel="stylesheet" href="styles.css?v=20261111c">
-<link rel="stylesheet" href="companion.css?v=20261105e">
+<link rel="stylesheet" href="styles.css?v=20261111d">
+<link rel="stylesheet" href="companion.css?v=20261111d">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🍅</text></svg>">
 </head>
 <body>
@@ -333,6 +333,8 @@
     <div class="mind-subtabs">
       <button class="mind-sub active" data-mind="chat">💬 AI 树洞</button>
       <button class="mind-sub" data-mind="abc">📝 ABC 记录</button>
+      <button class="mind-sub" data-mind="park">🫙 想法暂存</button>
+      <button class="mind-sub" data-mind="belief">🧩 挑战信念</button>
       <button class="mind-sub" data-mind="aid">🧰 情绪急救包</button>
     </div>
 
@@ -387,6 +389,49 @@
     <div id="mind-aid" class="mind-pane hidden">
       <p class="aid-lead">情绪上头的瞬间，先让身体冷静下来。选一个小练习 👇</p>
       <div id="aidGrid" class="aid-grid"></div>
+    </div>
+
+    <!-- 想法暂存盒：焦虑外化 + 担忧推迟（worry postponement） -->
+    <div id="mind-park" class="mind-pane hidden">
+      <div class="park-card">
+        <h3>🫙 想法暂存盒</h3>
+        <p class="park-lead">焦虑或杂念冒出来的时候，把它写下来放在这里——写出来的那一刻，脑子里的循环就停了。<br>不需要现在解决它。到了晚上给自己留的「担忧时间」，再来统一处理。</p>
+        <textarea id="parkInput" class="modal-textarea" style="min-height:56px" maxlength="300" placeholder="把此刻的想法写下来，不用写完整，也不用解决它…"></textarea>
+        <div class="modal-actions" style="margin-top:10px">
+          <button id="parkSaveBtn" class="btn primary block">放进暂存盒 🫙</button>
+        </div>
+      </div>
+      <h3 class="abc-list-title">待处理 <small style="font-weight:400;color:var(--text-sub)">每一条都能：变成任务 · 标记不在控制范围 · 就此放下</small></h3>
+      <div id="parkList" class="abc-list"><div class="stats-empty">暂存盒是空的，很安静 🌙</div></div>
+      <h3 class="abc-list-title">已经处理好的</h3>
+      <div id="parkDoneList" class="abc-list"></div>
+    </div>
+
+    <!-- 挑战信念工作表：CBT 练习 5（情境→卡点→相信度→挑战八问→思维类型→新认知→复评） -->
+    <div id="mind-belief" class="mind-pane hidden">
+      <div class="abc-card">
+        <h3>🧩 挑战信念工作表</h3>
+        <p class="park-lead">被一个想法反复打击的时候，把它拿到桌面上来审一审。问题不用全答，选几问就够了。</p>
+        <label class="modal-label">A · 情境（发生了什么，只写事实）</label>
+        <textarea id="blSituation" class="modal-textarea" style="min-height:52px" maxlength="500" placeholder="例：今天只完成了一张卡片"></textarea>
+        <label class="modal-label">B · 认知或卡点（我对自己说了什么）</label>
+        <textarea id="blBelief" class="modal-textarea" style="min-height:52px" maxlength="300" placeholder="例：我什么都做不好，一直都在浪费时间"></textarea>
+        <label class="modal-label">我有多相信这个想法？<span id="blBeforeVal">70</span>%</label>
+        <input id="blBefore" type="range" min="0" max="100" value="70" style="width:100%">
+        <label class="modal-label">挑战问题（选几问回答就行）</label>
+        <div id="blQuestions"></div>
+        <label class="modal-label">E · 这个想法属于哪种思维方式？（可多选）</label>
+        <div id="blDistort" class="bl-distort"></div>
+        <label class="modal-label">F · 新认知（一句更平衡、更准确的话）</label>
+        <textarea id="blNew" class="modal-textarea" style="min-height:52px" maxlength="300" placeholder="例：今天只完成了一张，但这一张是真实的进展，我不需要一天做完所有事"></textarea>
+        <label class="modal-label">现在再想想，有多相信原来的卡点？<span id="blAfterVal">40</span>%</label>
+        <input id="blAfter" type="range" min="0" max="100" value="40" style="width:100%">
+        <div class="modal-actions" style="margin-top:14px">
+          <button id="blSaveBtn" class="btn primary block">保存这张工作表</button>
+        </div>
+      </div>
+      <h3 class="abc-list-title">过去的挑战记录</h3>
+      <div id="blList" class="abc-list"><div class="stats-empty">还没有记录。下次被想法困住时，来这里试试 🔍</div></div>
     </div>
   </section>
 
@@ -530,6 +575,6 @@
 
 <script src="https://cdn.jsdelivr.net/npm/@tencent-ai/workbuddy-cloud-sdk@dev/lib/index.global.js"></script>
 <script src="companion.js?v=20261105e"></script>
-<script src="app.js?v=20261111c"></script>
+<script src="app.js?v=20261111d"></script>
 </body>
 </html>

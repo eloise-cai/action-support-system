@@ -4425,6 +4425,229 @@ bind("abcList", "click", async (e) => {
   }
 });
 
+/* ---------- 想法暂存盒（焦虑外化 + 担忧推迟） ---------- */
+let worryNotes = [];
+async function loadWorry() {
+  const res = await cloud.database.from("worry_notes").select("*").order("created_at", { ascending: false }).limit(200);
+  if (res.error) { toast("暂存盒加载失败：" + res.error.message, true); return; }
+  worryNotes = res.data || [];
+  renderWorry();
+}
+const WORRY_STATUS = { task: "已变成任务", beyond: "不在我的控制范围", done: "就此放下" };
+
+function renderWorry() {
+  const parked = worryNotes.filter(x => x.status === "parked");
+  const done = worryNotes.filter(x => x.status !== "parked");
+  const row = x => '<div class="abc-item park-item' + (x.status !== "parked" ? " park-done" : "") + '">' +
+    '<button class="abc-del" data-delpark="' + x.id + '" title="删除">✕</button>' +
+    '<div class="park-content">' + esc(x.content) + "</div>" +
+    (x.status === "parked"
+      ? '<div class="park-btns">' +
+        '<button class="park-act" data-parktask="' + x.id + '">→ 变成任务</button>' +
+        '<button class="park-act" data-parkbeyond="' + x.id + '">🚫 不在我控制</button>' +
+        '<button class="park-act" data-parkdone="' + x.id + '">✓ 就此放下</button></div>'
+      : '<div class="park-status">' + (WORRY_STATUS[x.status] || x.status) +
+        (x.task_id ? '（去看任务列表）' : "") + "</div>") +
+    "</div>";
+  $id("parkList").innerHTML = parked.length ? parked.map(row).join("") :
+    '<div class="stats-empty">暂存盒是空的，很安静 🌙</div>';
+  $id("parkDoneList").innerHTML = done.length ? done.map(row).join("") :
+    '<div class="stats-empty">还没有处理过的想法</div>';
+}
+
+bind("parkSaveBtn", "click", async () => {
+  const content = $id("parkInput").value.trim();
+  if (!content) { toast("写点什么再放进来吧", true); return; }
+  try {
+    const rows = await db(cloud.database.from("worry_notes").insert({ content }).select());
+    if (rows && rows[0]) {
+      worryNotes.unshift(rows[0]);
+      $id("parkInput").value = "";
+      renderWorry();
+      toast("已放进暂存盒 🫙 现在回到手头的事，它不会丢");
+    }
+  } catch (e) { /* db() 已提示 */ }
+});
+
+bind("parkInput", "keydown", e => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); $id("parkSaveBtn").click(); } });
+
+async function resolveWorry(id, status, taskId) {
+  try {
+    const rows = await db(cloud.database.from("worry_notes").update({
+      status, task_id: taskId || null, resolved_at: new Date().toISOString(),
+    }).eq("id", id).select());
+    if (rows && rows[0]) {
+      const i = worryNotes.findIndex(x => x.id === id);
+      if (i >= 0) worryNotes[i] = rows[0];
+      renderWorry();
+    }
+  } catch (e) { /* db() 已提示 */ }
+}
+
+bind("parkList", "click", async e => {
+  const del = e.target.closest("[data-delpark]");
+  if (del) {
+    const id = +del.dataset.delpark;
+    const ok = await confirmDialog({ title: "删除这条想法", desc: "删除后无法恢复。", okText: "删除" });
+    if (!ok) return;
+    try {
+      await db(cloud.database.from("worry_notes").delete().eq("id", id).select());
+      worryNotes = worryNotes.filter(x => x.id !== id);
+      renderWorry();
+      toast("已删除");
+    } catch (err) { /* db() 已提示 */ }
+    return;
+  }
+  const task = e.target.closest("[data-parktask]");
+  if (task) {
+    const id = +task.dataset.parktask;
+    const note = worryNotes.find(x => x.id === id);
+    if (!note) return;
+    const maxSort = tasks.reduce((a, b) => Math.max(a, b.sort_order || 0), 0);
+    try {
+      const rows = await db(cloud.database.from("tasks").insert({
+        title: note.content.slice(0, 50), level: "mid", category: "life", sort_order: maxSort + 1,
+      }).select());
+      if (rows && rows[0]) tasks.push(rows[0]);
+      await resolveWorry(id, "task", rows && rows[0] ? rows[0].id : null);
+      renderAll();
+      toast("已变成任务：「" + note.content.slice(0, 20) + (note.content.length > 20 ? "…" : "") + "」");
+    } catch (err) { /* db() 已提示 */ }
+    return;
+  }
+  const beyond = e.target.closest("[data-parkbeyond]");
+  if (beyond) { await resolveWorry(+beyond.dataset.parkbeyond, "beyond"); toast("好的。有些事不在控制范围内，放下不是认输 🌱"); return; }
+  const done = e.target.closest("[data-parkdone]");
+  if (done) { await resolveWorry(+done.dataset.parkdone, "done"); toast("已放下 ✓"); return; }
+});
+bind("parkDoneList", "click", async e => {
+  const del = e.target.closest("[data-delpark]");
+  if (!del) return;
+  const id = +del.dataset.delpark;
+  const ok = await confirmDialog({ title: "删除这条想法", desc: "删除后无法恢复。", okText: "删除" });
+  if (!ok) return;
+  try {
+    await db(cloud.database.from("worry_notes").delete().eq("id", id).select());
+    worryNotes = worryNotes.filter(x => x.id !== id);
+    renderWorry();
+    toast("已删除");
+  } catch (err) { /* db() 已提示 */ }
+});
+
+/* ---------- 挑战信念工作表（CBT 练习 5） ---------- */
+let beliefRecords = [];
+const BL_QUESTIONS = [
+  "这个卡点是一种习惯，还是基于事实？",
+  "我是否把「可能发生」当成了「大概率发生」？",
+  "有没有「总是 / 永远 / 从不 / 必须」这类极端措辞（包括藏着的那种）？",
+  "我是不是只聚焦了事件的某一个方面，就下了结论？",
+  "这个卡点最早来自哪里？放在现在还成立吗？",
+  "如果是我最好的朋友遇到同样的事，我会对他/她说这句话吗？",
+  "最坏的结果是什么？我能承受吗？最现实的结果又是什么？",
+  "在这件事里，我的实际责任占多少？还有哪些别的原因？",
+];
+const BL_DISTORTIONS = ["灾难化", "非黑即白", "应该思维", "情绪推理", "读心术", "以偏概全", "贴标签", "个人化"];
+
+async function loadBelief() {
+  const res = await cloud.database.from("belief_reviews").select("*").order("record_date", { ascending: false }).order("id", { ascending: false }).limit(100);
+  if (res.error) { toast("记录加载失败：" + res.error.message, true); return; }
+  beliefRecords = res.data || [];
+  renderBelief();
+}
+
+function beliefScoreChip(before, after) {
+  if (after === null || after === undefined) return '<span class="bl-score">' + before + "%</span>";
+  const drop = before - after;
+  const cls = drop >= 30 ? "bl-drop-big" : drop >= 10 ? "bl-drop" : "bl-drop-none";
+  const txt = drop >= 30 ? "想法松动了很多" : drop >= 10 ? "想法松动了" : drop > 0 ? "有一点点松动" : "还蛮坚定的";
+  return '<span class="bl-score-wrap"><span class="bl-score">' + before + "%</span>" +
+    '<span class="bl-arrow">→</span><span class="bl-score bl-after">' + after + "%</span>" +
+    '<span class="' + cls + '">' + txt + "</span></span>";
+}
+
+function renderBelief() {
+  const box = $id("blList");
+  if (!beliefRecords.length) {
+    box.innerHTML = '<div class="stats-empty">还没有记录。下次被想法困住时，来这里试试 🔍</div>';
+    return;
+  }
+  box.innerHTML = beliefRecords.map(r => {
+    let answers = {};
+    try { answers = typeof r.answers === "string" ? JSON.parse(r.answers || "{}") : (r.answers || {}); } catch (e) { answers = {}; }
+    const ansHtml = Object.keys(BL_QUESTIONS)
+      .filter(k => answers[k] && String(answers[k]).trim())
+      .map(k => '<div class="bl-ans"><b>问' + (Number(k) + 1) + " · " + esc(BL_QUESTIONS[k]) + "</b>" + esc(String(answers[k]).slice(0, 200)) + "</div>")
+      .join("");
+    const distort = (r.distortion || "").split(",").filter(Boolean).map(d => '<span class="bl-tag">' + esc(d) + "</span>").join("");
+    return '<div class="abc-item bl-item">' +
+      '<button class="abc-del" data-delbelief="' + r.id + '" title="删除">✕</button>' +
+      '<div class="abc-main">' +
+      '<div class="abc-item-top"><span class="abc-date">' + esc(r.record_date) + "</span>" + beliefScoreChip(r.believe_before, r.believe_after) + "</div>" +
+      '<div class="abc-line"><b>A 情境</b>' + esc(r.situation || "—") + "</div>" +
+      '<div class="abc-line"><b>B 卡点</b>' + esc(r.belief) + "</div>" +
+      (distort ? '<div class="abc-line"><b>思维方式</b>' + distort + "</div>" : "") +
+      (r.new_belief ? '<div class="abc-line bl-new"><b>F 新认知</b>' + esc(r.new_belief) + "</div>" : "") +
+      (ansHtml ? '<details class="bl-details"><summary>挑战过程（' + Object.keys(BL_QUESTIONS).filter(k => answers[k] && String(answers[k]).trim()).length + " 问）</summary>" + ansHtml + "</details>" : "") +
+      "</div></div>";
+  }).join("");
+}
+
+bind("blBefore", "input", () => { $id("blBeforeVal").textContent = $id("blBefore").value; });
+bind("blAfter", "input", () => { $id("blAfterVal").textContent = $id("blAfter").value; });
+
+bind("blSaveBtn", "click", async () => {
+  const situation = $id("blSituation").value.trim();
+  const belief = $id("blBelief").value.trim();
+  if (!belief) { toast("至少写下 B 栏的卡点——那张工作表的主角", true); return; }
+  const answers = {};
+  document.querySelectorAll("#blQuestions textarea").forEach(ta => {
+    const v = ta.value.trim();
+    if (v) answers[ta.dataset.q] = v;
+  });
+  const distort = [...document.querySelectorAll("#blDistort .bl-dchip.on")].map(b => b.textContent).join(",");
+  const before = +$id("blBefore").value;
+  const after = +$id("blAfter").value;
+  try {
+    const rows = await db(cloud.database.from("belief_reviews").insert({
+      situation, belief,
+      believe_before: before, believe_after: after,
+      answers: JSON.stringify(answers), distortion: distort,
+      new_belief: $id("blNew").value.trim(),
+      record_date: localDateStr(new Date()),
+    }).select());
+    if (rows && rows[0]) {
+      beliefRecords.unshift(rows[0]);
+      renderBelief();
+      ["blSituation", "blBelief", "blNew"].forEach(x => ($id(x).value = ""));
+      document.querySelectorAll("#blQuestions textarea").forEach(ta => (ta.value = ""));
+      document.querySelectorAll("#blDistort .bl-dchip").forEach(b => b.classList.remove("on"));
+      const drop = before - after;
+      toast(drop >= 10
+        ? "已记下 🌱 相信度从 " + before + "% 降到 " + after + "%——这就是想法松动的证据"
+        : "已记下 ✍️ 想法还挺坚定的也没关系，看清它本身就是一步");
+    }
+  } catch (e) { /* db() 已提示 */ }
+});
+
+bind("blDistort", "click", e => {
+  const chip = e.target.closest(".bl-dchip");
+  if (chip) chip.classList.toggle("on");
+});
+
+bind("blList", "click", async e => {
+  const del = e.target.closest("[data-delbelief]");
+  if (!del) return;
+  const id = +del.dataset.delbelief;
+  const ok = await confirmDialog({ title: "删除这条工作表", desc: "删除后无法恢复。", okText: "删除" });
+  if (!ok) return;
+  try {
+    await db(cloud.database.from("belief_reviews").delete().eq("id", id).select());
+    beliefRecords = beliefRecords.filter(x => x.id !== id);
+    renderBelief();
+    toast("已删除");
+  } catch (err) { /* db() 已提示 */ }
+});
+
 /* ---------- 情绪急救包 ---------- */
 const FIRST_AID = [
   {
@@ -4623,13 +4846,24 @@ bind("aidGrid", "click", (e) => {
 });
 
 /* ---------- 心理页子标签 ---------- */
+(function initBeliefForm() {
+  const qs = $id("blQuestions");
+  if (!qs) return;
+  qs.innerHTML = BL_QUESTIONS.map((q, i) =>
+    '<div class="bl-q"><label class="bl-q-label">问' + (i + 1) + " · " + esc(q) + "</label>" +
+    '<textarea rows="2" maxlength="300" data-q="' + i + '" placeholder="想答就答，跳过也没关系"></textarea></div>'
+  ).join("");
+  $id("blDistort").innerHTML = BL_DISTORTIONS.map(d => '<button type="button" class="bl-dchip">' + d + "</button>").join("");
+})();
 document.querySelectorAll(".mind-sub").forEach(btn => {
   btn.addEventListener("click", () => {
     document.querySelectorAll(".mind-sub").forEach(b => b.classList.remove("active"));
     btn.classList.add("active");
-    ["chat", "abc", "aid"].forEach(k => $id("mind-" + k).classList.toggle("hidden", k !== btn.dataset.mind));
+    ["chat", "abc", "aid", "park", "belief"].forEach(k => $id("mind-" + k).classList.toggle("hidden", k !== btn.dataset.mind));
     if (btn.dataset.mind === "abc") loadAbc();
     if (btn.dataset.mind === "aid") renderAidGrid();
+    if (btn.dataset.mind === "park") loadWorry();
+    if (btn.dataset.mind === "belief") loadBelief();
   });
 });
 

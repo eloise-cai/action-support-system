@@ -2461,3 +2461,69 @@ body.theme-starry .tab.active { background: var(--w08); }
 @media (prefers-reduced-motion: reduce) {
   :is(body.theme-forest, body.theme-starry, body.theme-retro) .task-card:hover { transform: none; }
 }
+
+/* ============ 想法暂存盒 + 挑战信念工作表 ============ */
+.park-card, .abc-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 16px;
+  margin-bottom: 18px;
+}
+.park-card h3 { margin: 0 0 6px; }
+.park-lead { font-size: 12.5px; color: var(--text-sub); line-height: 1.7; margin: 0 0 12px; }
+.park-item .park-content {
+  font-size: 13.5px; line-height: 1.6; color: var(--text);
+  white-space: pre-wrap; word-break: break-word; margin-bottom: 8px;
+}
+.park-item.park-done { opacity: .6; }
+.park-item.park-done .park-content { text-decoration: line-through; text-decoration-color: var(--w30); }
+.park-btns { display: flex; gap: 8px; flex-wrap: wrap; }
+.park-act {
+  font-size: 12px; padding: 5px 10px; border-radius: 99px;
+  background: var(--w05); border: 1px solid var(--w12);
+  color: var(--text-sub); cursor: pointer; transition: background .15s, color .15s;
+}
+.park-act:hover { background: var(--w12); color: var(--text); }
+.park-status { font-size: 12px; color: var(--text-sub); }
+
+.bl-distort { display: flex; gap: 8px; flex-wrap: wrap; margin: 8px 0 4px; }
+.bl-dchip {
+  font-size: 12.5px; padding: 5px 12px; border-radius: 99px;
+  background: var(--w05); border: 1px solid var(--w12);
+  color: var(--text-sub); cursor: pointer; transition: all .15s;
+}
+.bl-dchip.on {
+  background: var(--ring); border-color: var(--accent);
+  color: var(--accent); font-weight: 600;
+}
+.bl-q { margin-bottom: 10px; }
+.bl-q-label { display: block; font-size: 12.5px; color: var(--text); margin-bottom: 5px; line-height: 1.5; }
+.bl-q textarea {
+  width: 100%; box-sizing: border-box;
+  background: var(--w04); border: 1px solid var(--border); border-radius: 10px;
+  color: var(--text); font-size: 13px; line-height: 1.6;
+  padding: 8px 10px; resize: vertical; font-family: inherit;
+}
+.bl-q textarea:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--ring); }
+.bl-score-wrap { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.bl-score {
+  font-size: 12px; font-weight: 700; padding: 3px 9px; border-radius: 999px;
+  background: var(--w08); color: var(--text);
+}
+.bl-score.bl-after { background: var(--ring); color: var(--accent); }
+.bl-arrow { color: var(--text-sub); font-size: 12px; }
+.bl-drop-big, .bl-drop, .bl-drop-none { font-size: 11.5px; padding: 3px 8px; border-radius: 999px; }
+.bl-drop-big { background: var(--g22); color: var(--t-ok); }
+.bl-drop { background: var(--w08); color: var(--t-info); }
+.bl-drop-none { background: var(--w05); color: var(--text-sub); }
+.bl-tag {
+  display: inline-block; font-size: 11.5px; padding: 2px 8px; margin-right: 4px;
+  border-radius: 999px; background: var(--w08); color: var(--text-sub);
+}
+.bl-new .abc-line, .abc-line.bl-new { }
+.bl-item .bl-new b { color: var(--t-ok); }
+.bl-details { margin-top: 8px; font-size: 12.5px; }
+.bl-details summary { cursor: pointer; color: var(--accent); font-size: 12px; user-select: none; }
+.bl-ans { margin: 8px 0 0; color: var(--text-sub); line-height: 1.6; }
+.bl-ans b { display: block; color: var(--text); font-size: 12px; margin-bottom: 2px; }
