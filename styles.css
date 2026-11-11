@@ -1230,6 +1230,8 @@ main { max-width: 1100px; margin: 0 auto; padding: 22px 18px 80px; }
 .money-row:hover .money-del { display: block; }
 .money-del:hover { color: var(--red); }
 .money-kind-pick { display: flex; gap: 10px; margin-bottom: 14px; }
+.money-cat-mgr-btn { margin-top: 8px; }
+#mMoneyCatBody .cat-manage { margin-top: 8px; }
 .kind-opt {
   flex: 1; padding: 10px 0; border-radius: 10px;
   background: var(--bg-soft); border: 1.5px solid var(--border);

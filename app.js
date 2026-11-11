@@ -511,6 +511,7 @@ async function ensureUserProfile() {
       try { moneyBreakdown.save = JSON.parse(got.data[0].save_items || "[]") || []; } catch (e) { moneyBreakdown.save = []; }
       try { moneyBreakdown.invest = JSON.parse(got.data[0].invest_items || "[]") || []; } catch (e) { moneyBreakdown.invest = []; }
       try { customCats = JSON.parse(got.data[0].custom_categories || "[]") || []; } catch (e) { customCats = []; }
+      try { moneyCats = JSON.parse(got.data[0].money_categories || "[]") || []; } catch (e) { moneyCats = []; }
       try { todayPicks = JSON.parse(got.data[0].today_picks || "{}") || {}; } catch (e) { todayPicks = {}; }
       if (got.data[0].theme) applyTheme(got.data[0].theme); // 恢复上次用的皮肤
     } else if (got && !got.error) {
@@ -3055,11 +3056,49 @@ function weekStartOf(d) {
 function fmtYuan(n) { return "¥" + (Math.round(n * 100) / 100).toFixed(2); }
 
 const MONEY_CATS = {
-  expense: ["餐饮", "交通", "购物", "娱乐", "居住", "医疗", "学习", "订阅", "其他"],
   income: ["工资", "兼职", "理财", "红包", "退款", "其他"],
   save: ["定期存款", "活期存款", "货币基金", "攒钱计划", "其他"],
   invest: ["基金", "股票", "债券", "黄金", "养老账户", "其他"],
 };
+/* 支出类型（内置 8 类 + 用户自定义，存 user_profiles.money_categories JSON）
+   记录里存 key：改名后历史记录跟着显示新名字；删除只是从选项里移除，已有记录照常可读。
+   旧版本记录存的是文本，原样显示；老默认名通过别名表并进对应新类型。 */
+const MONEY_EXP_BASE = [
+  { key: "dining", label: "餐饮" },
+  { key: "food", label: "食品" },
+  { key: "life", label: "生活" },
+  { key: "fun", label: "娱乐" },
+  { key: "cloth", label: "服装" },
+  { key: "traffic", label: "交通" },
+  { key: "family", label: "家庭" },
+  { key: "edu", label: "教育" },
+];
+const MONEY_LEGACY_ALIAS = { "餐饮": "dining", "交通": "traffic", "生活": "life", "娱乐": "fun" };
+let moneyCats = []; // 覆盖/自定义记录 [{ key, label?, deleted? }]（deleted 只标记，保历史可读）
+function moneyExpOptions() {
+  const m = {};
+  for (const c of MONEY_EXP_BASE) m[c.key] = c.label;
+  for (const c of moneyCats) {
+    if (MONEY_EXP_BASE.some(b => b.key === c.key)) {
+      if (c.label) m[c.key] = c.label;
+      if (c.deleted) delete m[c.key];
+    } else if (!c.deleted) {
+      m[c.key] = c.label;
+    }
+  }
+  return Object.keys(m).map(k => ({ key: k, label: m[k] }));
+}
+function moneyCatLabel(cat) {
+  if (!cat) return "其他";
+  const key = MONEY_LEGACY_ALIAS[cat] || cat;
+  const base = MONEY_EXP_BASE.find(b => b.key === key);
+  if (base) {
+    const ov = moneyCats.find(c => c.key === key && c.label);
+    return ov ? ov.label : base.label;
+  }
+  const cust = moneyCats.find(c => c.key === key && c.label);
+  return cust ? cust.label : cat;
+}
 const MONEY_KINDS = {
   expense: { t: "支", cls: "k-out", amtCls: "c-exp", sign: "−", name: "支出" },
   income: { t: "收", cls: "k-in", amtCls: "c-inc", sign: "+", name: "收入" },
@@ -3202,7 +3241,7 @@ function renderMoney() {
   const byCat = {};
   for (const r of inRange) {
     if (r.kind !== "expense") continue;
-    const c = r.category || "其他";
+    const c = moneyCatLabel(r.category);
     byCat[c] = (byCat[c] || 0) + (parseFloat(r.amount) || 0);
   }
   renderExpDonut(byCat, exp, unit);
@@ -3262,7 +3301,7 @@ function renderMoney() {
         const m = MONEY_KINDS[r.kind] || MONEY_KINDS.expense;
         const amt = fmtYuan(parseFloat(r.amount) || 0).slice(1);
         return '<div class="money-row"><span class="money-kind ' + m.cls + '">' + m.t + "</span>" +
-          '<span class="money-cat">' + esc(r.category || "其他") + "</span>" +
+          '<span class="money-cat">' + esc(moneyCatLabel(r.category)) + "</span>" +
           '<span class="money-note">' + esc(r.note || "") + "</span>" +
           '<span class="money-amt ' + m.amtCls + '">' + (m.sign ? m.sign : "") + amt + "</span>" +
           '<button class="money-del" data-delmoney="' + r.id + '" title="删除">✕</button>' +
@@ -3438,6 +3477,8 @@ bind("addMoneyBtn", "click", () => {
     "</div>" +
     '<label class="modal-label">分类</label>' +
     '<select id="mMoneyCat" class="modal-input"></select>' +
+    '<button type="button" class="btn ghost small money-cat-mgr-btn" id="mMoneyCatMgr">⚙ 管理支出类型</button>' +
+    '<div id="mMoneyCatBody"></div>' +
     '<label class="modal-label">备注（可选）</label>' +
     '<input id="mMoneyNote" class="modal-input" maxlength="60" placeholder="例：和朋友的晚饭">' +
     '<div class="modal-actions">' +
@@ -3447,8 +3488,15 @@ bind("addMoneyBtn", "click", () => {
   );
   let kind = "expense";
   const catSel = $id("mMoneyCat");
+  const mgrBtn = $id("mMoneyCatMgr");
   const fillCats = () => {
-    catSel.innerHTML = MONEY_CATS[kind].map(c => "<option>" + c + "</option>").join("");
+    if (kind === "expense") {
+      catSel.innerHTML = moneyExpOptions().map(c => '<option value="' + esc(c.key) + '">' + esc(c.label) + "</option>").join("");
+    } else {
+      catSel.innerHTML = MONEY_CATS[kind].map(c => "<option>" + esc(c) + "</option>").join("");
+    }
+    mgrBtn.classList.toggle("hidden", kind !== "expense");
+    $id("mMoneyCatBody").innerHTML = ""; // 切换类型时收起管理面板
   };
   fillCats();
   const pick = $id("mKindPick");
@@ -3461,6 +3509,102 @@ bind("addMoneyBtn", "click", () => {
     fillCats();
   });
   $id("mMoneyAmt").focus();
+  /* 支出类型管理：内联展开（不开新弹窗），改名/删除/恢复/新增，与任务分类管理同一套交互 */
+  const body = $id("mMoneyCatBody");
+  const renderMgr = () => {
+    const opts = moneyExpOptions();
+    const baseRows = MONEY_EXP_BASE.map(b => {
+      const ov = moneyCats.find(c => c.key === b.key);
+      const live = opts.some(o => o.key === b.key);
+      if (!live) {
+        return '<div class="cat-mrow cat-dead"><span class="cm-dead-txt">' + esc(moneyCatLabel(b.key)) + "（已隐藏）</span>" +
+          '<button type="button" class="btn ghost small" data-mcrestore="' + b.key + '">恢复</button></div>';
+      }
+      const reset = ov && ov.label ? '<button type="button" class="btn ghost small" data-mcreset="' + b.key + '" title="恢复默认">⟲</button>' : "";
+      return '<div class="cat-mrow" data-mck="' + b.key + '">' +
+        '<input class="cm-name" maxlength="8" value="' + esc(moneyCatLabel(b.key)) + '" title="类型名称">' +
+        '<button type="button" class="btn primary small" data-mcsave="' + b.key + '" title="保存修改">✓</button>' +
+        reset +
+        '<button type="button" class="btn ghost small cm-del" data-mcdel="' + b.key + '" title="隐藏该类型">🗑</button></div>';
+    }).join("");
+    const customRows = moneyCats.filter(c => !MONEY_EXP_BASE.some(b => b.key === c.key) && !c.deleted).map(c =>
+      '<div class="cat-mrow" data-mck="' + esc(c.key) + '">' +
+      '<input class="cm-name" maxlength="8" value="' + esc(c.label) + '" title="类型名称">' +
+      '<button type="button" class="btn primary small" data-mcsave="' + esc(c.key) + '" title="保存修改">✓</button>' +
+      '<button type="button" class="btn ghost small cm-del" data-mcdel="' + esc(c.key) + '" title="删除该类型">🗑</button></div>').join("");
+    body.innerHTML = '<div class="cat-manage">' +
+      '<p class="cm-hint">所有支出类型都能改：改名后点 ✓ 保存（⟲ 恢复默认）；🗑 点一次变成「确认?」再点一次隐藏。历史记录不受影响——改名后旧记录也显示新名字。</p>' +
+      baseRows +
+      (customRows ? '<p class="cm-hint">自定义：</p>' + customRows : "") +
+      '<div class="cat-inline"><input id="mMCName" maxlength="8" placeholder="新类型名，如：奶茶">' +
+      '<button type="button" class="btn primary small" id="mMCOk" title="添加">＋</button></div>' +
+      '<button type="button" class="btn ghost small" id="mMCBack">‹ 返回</button></div>';
+    const nameIn = $id("mMCName");
+    if (nameIn) nameIn.addEventListener("keydown", e => { if (e.key === "Enter" && !e.isComposing && e.keyCode !== 229) { e.preventDefault(); addCustom(); } });
+  };
+  const addCustom = async () => {
+    const label = ($id("mMCName") ? $id("mMCName").value : "").trim();
+    if (!label) { toast("请输入类型名称", true); return; }
+    if (moneyExpOptions().some(o => o.label === label)) { toast("已有同名类型", true); return; }
+    await persistMoneyCats(moneyCats.concat([{ key: "m" + Date.now(), label }]));
+    fillCats();
+    renderMgr();
+    toast("已添加支出类型：" + label);
+  };
+  mgrBtn.addEventListener("click", () => {
+    if (body.innerHTML) { body.innerHTML = ""; return; }
+    renderMgr();
+  });
+  body.addEventListener("click", async e => {
+    if (e.target.closest("#mMCBack")) { body.innerHTML = ""; return; }
+    if (e.target.closest("#mMCOk")) { await addCustom(); return; }
+    const sv = e.target.closest("[data-mcsave]");
+    if (sv) {
+      const row = sv.closest(".cat-mrow");
+      const label = row.querySelector(".cm-name").value.trim();
+      if (!label) { toast("名称不能为空", true); return; }
+      if (moneyExpOptions().some(o => o.key !== sv.dataset.mcsave && o.label === label)) { toast("已有同名类型", true); return; }
+      const rest = moneyCats.filter(c => c.key !== sv.dataset.mcsave);
+      await persistMoneyCats(rest.concat([{ key: sv.dataset.mcsave, label }]));
+      fillCats();
+      renderMgr();
+      toast("类型已更新：" + label);
+      return;
+    }
+    const rs = e.target.closest("[data-mcreset]");
+    if (rs) {
+      await persistMoneyCats(moneyCats.filter(c => c.key !== rs.dataset.mcreset));
+      fillCats();
+      renderMgr();
+      toast("已恢复默认");
+      return;
+    }
+    const tr = e.target.closest("[data-mcrestore]");
+    if (tr) {
+      await persistMoneyCats(moneyCats.filter(c => c.key !== tr.dataset.mcrestore));
+      fillCats();
+      renderMgr();
+      toast("类型已恢复：" + moneyCatLabel(tr.dataset.mcrestore));
+      return;
+    }
+    const dl = e.target.closest("[data-mcdel]");
+    if (dl) {
+      if (!dl.classList.contains("armed")) {
+        dl.classList.add("armed");
+        dl.textContent = "确认?";
+        setTimeout(() => { dl.classList.remove("armed"); dl.textContent = "🗑"; }, 3000);
+        return;
+      }
+      // 删除只标记：保留名字让历史记录仍然可读
+      const prev = moneyCats.find(c => c.key === dl.dataset.mcdel);
+      const name = (prev && prev.label) || (moneyExpOptions().find(o => o.key === dl.dataset.mcdel) || {}).label;
+      await persistMoneyCats(moneyCats.filter(c => c.key !== dl.dataset.mcdel).concat([{ key: dl.dataset.mcdel, label: name, deleted: true }]));
+      fillCats();
+      renderMgr();
+      toast("类型已隐藏（已有记录照常显示，不受影响）");
+      return;
+    }
+  });
   const save = async () => {
     const amt = parseFloat($id("mMoneyAmt").value);
     const date = $id("mMoneyDate").value || localDateStr(new Date());
@@ -4652,6 +4796,19 @@ async function persistCustomCats(next) {
     }
   }
   customCats = saved;
+  return saved;
+}
+
+/* 支出类型统一持久化（user_profiles.money_categories） */
+async function persistMoneyCats(next) {
+  let saved = next;
+  if (profileId) {
+    const res = await db(cloud.database.from("user_profiles").update({ money_categories: JSON.stringify(next) }).eq("id", profileId).select());
+    if (res && res[0]) {
+      try { saved = JSON.parse(res[0].money_categories || "[]") || next; } catch (e) { /* 保存失败就用本地值 */ }
+    }
+  }
+  moneyCats = saved;
   return saved;
 }
 
