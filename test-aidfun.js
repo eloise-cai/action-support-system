@@ -145,6 +145,8 @@ const modalOpen = w => !w.document.getElementById("modalOverlay").classList.cont
     check("B5 点木鱼 +1", cnt() === "今日功德：1");
     const float = w.document.querySelector("#muyuStage .muyu-float");
     check("B6 出现飘字动画元素", !!float);
+    check("B6b 木鱼是 SVG 图形而非 emoji", !!w.document.querySelector("#muyuBtn svg") && !!w.document.querySelector("#muyuBtn svg #muyuWood"));
+    check("B6c 敲击出现涟漪环元素", !!w.document.querySelector("#muyuStage .muyu-ring"));
     const prevented = pressEnter(w);
     check("B7 按 Enter 敲木鱼 → 功德 2", cnt() === "今日功德：2");
     check("B8 Enter 默认行为被阻止", prevented === true);

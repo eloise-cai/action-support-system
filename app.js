@@ -4726,7 +4726,7 @@ const FIRST_AID = [
     ],
   },
   {
-    icon: "🪘", title: "电子木鱼", desc: "按 Enter 敲一下 · 给内耗一个出口", muyu: true,
+    icon: "🥁", title: "电子木鱼", desc: "按 Enter 敲一下 · 给内耗一个出口", muyu: true,
     steps: [],
   },
   {
@@ -4804,7 +4804,30 @@ function openFirstAid(item, onClose) {
   }
   if (item.muyu) {
     html += '<div class="muyu-stage" id="muyuStage">' +
-      '<div class="muyu-btn" id="muyuBtn" title="点我或按 Enter">🪘</div>' +
+      '<div class="muyu-btn" id="muyuBtn" title="点我或按 Enter">' +
+      '<svg viewBox="0 0 220 170" aria-hidden="true">' +
+      '<defs><linearGradient id="muyuWood" x1="0" y1="0" x2="0" y2="1">' +
+      '<stop offset="0" stop-color="#e3ac6e"/><stop offset="1" stop-color="#b0753c"/>' +
+      "</linearGradient></defs>" +
+      '<ellipse cx="110" cy="141" rx="80" ry="15" fill="#8f6234"/>' +
+      '<ellipse cx="110" cy="136" rx="80" ry="14" fill="#c99257"/>' +
+      '<path d="M40 98 C40 62 72 40 110 40 C150 40 180 64 180 98 C180 116 156 127 110 127 C64 127 40 116 40 98 Z" fill="url(#muyuWood)"/>' +
+      '<ellipse cx="88" cy="62" rx="36" ry="13" fill="rgba(255,255,255,.3)"/>' +
+      '<path d="M40 98 C40 62 72 40 110 40" fill="none" stroke="rgba(120,78,40,.35)" stroke-width="3" stroke-linecap="round"/>' +
+      '<path d="M62 92 a14 12 0 0 1 22 -6" fill="none" stroke="rgba(122,79,42,.4)" stroke-width="3" stroke-linecap="round"/>' +
+      '<path d="M88 96 a15 13 0 0 1 24 -7" fill="none" stroke="rgba(122,79,42,.4)" stroke-width="3" stroke-linecap="round"/>' +
+      '<path d="M116 98 a15 13 0 0 1 24 -7" fill="none" stroke="rgba(122,79,42,.4)" stroke-width="3" stroke-linecap="round"/>' +
+      '<ellipse cx="150" cy="88" rx="17" ry="10" fill="#6b4423"/>' +
+      '<ellipse cx="150" cy="88" rx="11" ry="5.5" fill="#3d2611"/>' +
+      '<circle cx="118" cy="74" r="3.5" fill="#5a3a1d"/>' +
+      '<circle cx="121" cy="72.5" r="1.3" fill="rgba(255,255,255,.55)"/>' +
+      '<g transform="rotate(26 178 116)">' +
+      '<rect x="138" y="112" width="58" height="9" rx="4.5" fill="#8a5a30"/>' +
+      '<circle cx="196" cy="116" r="13" fill="#a8763e"/>' +
+      '<ellipse cx="192" cy="112" rx="7" ry="4" fill="rgba(255,255,255,.25)"/>' +
+      "</g>" +
+      "</svg>" +
+      "</div>" +
       '<div class="muyu-count" id="muyuCount">今日功德：0</div>' +
       '<div class="muyu-hint">点木鱼，或按 Enter 敲一下</div>' +
       "</div>";
@@ -4835,9 +4858,36 @@ function openFirstAid(item, onClose) {
     const MUYU_MILES = {
       10: "十连击达成 🙏 但功德不在次数，在你刚才那几秒的安静里",
       30: "手敲木鱼，心敲内耗。30 下够本了，回去干点正事也行",
-      50: "功德圆满 🪘 带着这点安静，回到刚才的事情上吧",
+      50: "功德圆满 🙏 带着这点安静，回到刚才的事情上吧",
     };
     let muyuCount = 0;
+    let muyuAC = null;
+    const muyuSound = () => {
+      try {
+        const AC = window.AudioContext || window.webkitAudioContext;
+        if (!AC) return;
+        if (!muyuAC) muyuAC = new AC();
+        if (muyuAC.state === "suspended") muyuAC.resume();
+        const t0 = muyuAC.currentTime;
+        // 低频木音「笃」
+        const o = muyuAC.createOscillator(), g = muyuAC.createGain();
+        o.type = "sine";
+        o.frequency.setValueAtTime(190, t0);
+        o.frequency.exponentialRampToValueAtTime(72, t0 + 0.09);
+        g.gain.setValueAtTime(0.5, t0);
+        g.gain.exponentialRampToValueAtTime(0.001, t0 + 0.13);
+        o.connect(g); g.connect(muyuAC.destination);
+        o.start(t0); o.stop(t0 + 0.14);
+        // 高频敲击点缀
+        const o2 = muyuAC.createOscillator(), g2 = muyuAC.createGain();
+        o2.type = "triangle";
+        o2.frequency.setValueAtTime(520, t0);
+        g2.gain.setValueAtTime(0.12, t0);
+        g2.gain.exponentialRampToValueAtTime(0.001, t0 + 0.05);
+        o2.connect(g2); g2.connect(muyuAC.destination);
+        o2.start(t0); o2.stop(t0 + 0.06);
+      } catch (e) { /* 音频不可用就静默敲 */ }
+    };
     const knock = () => {
       muyuCount++;
       const c = $id("muyuCount");
@@ -4846,6 +4896,10 @@ function openFirstAid(item, onClose) {
       if (fish) { fish.classList.remove("hit"); void fish.offsetWidth; fish.classList.add("hit"); }
       const stage = $id("muyuStage");
       if (stage) {
+        const r = document.createElement("span");
+        r.className = "muyu-ring";
+        stage.appendChild(r);
+        setTimeout(() => r.remove(), 520);
         const f = document.createElement("span");
         f.className = "muyu-float";
         f.textContent = MUYU_FLOATS[Math.floor(Math.random() * MUYU_FLOATS.length)];
@@ -4853,6 +4907,7 @@ function openFirstAid(item, onClose) {
         stage.appendChild(f);
         setTimeout(() => f.remove(), 900);
       }
+      muyuSound();
       const mile = MUYU_MILES[muyuCount];
       if (mile) toast(mile);
     };

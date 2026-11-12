@@ -2536,12 +2536,21 @@ body.theme-starry .tab.active { background: var(--w08); }
 }
 .muyu-btn {
   display: inline-flex; align-items: center; justify-content: center;
-  width: 128px; height: 128px; font-size: 62px; border-radius: 50%;
+  width: 150px; height: 150px; border-radius: 50%;
   background: var(--w05); border: 1px solid var(--border);
   cursor: pointer; user-select: none;
   -webkit-tap-highlight-color: transparent;
   transition: transform .08s;
 }
+.muyu-btn svg { width: 128px; height: auto; display: block; pointer-events: none; }
+.muyu-ring {
+  position: absolute; left: 50%; top: 76px; width: 130px; height: 130px;
+  margin: -65px 0 0 -65px;
+  border: 3px solid var(--accent); border-radius: 50%;
+  opacity: .55; pointer-events: none;
+  animation: muyuRing .5s ease-out forwards;
+}
+@keyframes muyuRing { 0% { transform: scale(.5); opacity: .55; } 100% { transform: scale(1.4); opacity: 0; } }
 .muyu-btn:active { transform: scale(.9); }
 .muyu-btn.hit { animation: muyuHit .18s ease; }
 @keyframes muyuHit { 0% { transform: scale(.86); } 100% { transform: scale(1); } }
