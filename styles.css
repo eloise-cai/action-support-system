@@ -2527,3 +2527,45 @@ body.theme-starry .tab.active { background: var(--w08); }
 .bl-details summary { cursor: pointer; color: var(--accent); font-size: 12px; user-select: none; }
 .bl-ans { margin: 8px 0 0; color: var(--text-sub); line-height: 1.6; }
 .bl-ans b { display: block; color: var(--text); font-size: 12px; margin-bottom: 2px; }
+
+/* ---------- 电子木鱼 + 赛博算卦（情绪急救包） ---------- */
+.muyu-stage {
+  position: relative;
+  text-align: center;
+  padding: 8px 0 2px;
+}
+.muyu-btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 128px; height: 128px; font-size: 62px; border-radius: 50%;
+  background: var(--w05); border: 1px solid var(--border);
+  cursor: pointer; user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  transition: transform .08s;
+}
+.muyu-btn:active { transform: scale(.9); }
+.muyu-btn.hit { animation: muyuHit .18s ease; }
+@keyframes muyuHit { 0% { transform: scale(.86); } 100% { transform: scale(1); } }
+.muyu-count { margin-top: 12px; font-size: 15px; font-weight: 700; color: var(--text); }
+.muyu-hint { margin-top: 4px; font-size: 12.5px; color: var(--text-sub); }
+.muyu-float {
+  position: absolute; top: 6px;
+  font-size: 15px; font-weight: 700; color: var(--accent);
+  pointer-events: none;
+  animation: muyuFloat .9s ease-out forwards;
+}
+@keyframes muyuFloat { 0% { opacity: 1; transform: translateY(0); } 100% { opacity: 0; transform: translateY(-36px); } }
+.divine-box { text-align: center; padding: 4px 0; }
+.divine-empty { color: var(--text-sub); font-size: 14px; line-height: 1.9; padding: 18px 0; }
+.divine-result {
+  padding: 12px 10px 6px; border-radius: var(--radius);
+  background: var(--w05);
+}
+.divine-result.shake { animation: divineShake .3s ease; }
+@keyframes divineShake {
+  0% { transform: translateX(-5px); } 25% { transform: translateX(4px); }
+  50% { transform: translateX(-3px); } 75% { transform: translateX(2px); }
+  100% { transform: translateX(0); }
+}
+.divine-lv { font-size: 17px; font-weight: 800; color: var(--accent); margin-top: 4px; }
+.divine-poem { font-size: 14.5px; color: var(--text); line-height: 2; margin-top: 8px; }
+.divine-note { font-size: 13px; color: var(--text-sub); margin: 8px 12px 6px; line-height: 1.8; }

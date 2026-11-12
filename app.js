@@ -4725,6 +4725,14 @@ const FIRST_AID = [
       "开会/学习前先玩一分钟，当作「热身开关」。",
     ],
   },
+  {
+    icon: "🪘", title: "电子木鱼", desc: "按 Enter 敲一下 · 给内耗一个出口", muyu: true,
+    steps: [],
+  },
+  {
+    icon: "🔮", title: "赛博算卦", desc: "按 Enter 求一签 · 抽句安慰再回去", divine: true,
+    steps: [],
+  },
 ];
 
 function renderAidGrid() {
@@ -4787,11 +4795,26 @@ function stopBreathing() {
 }
 
 function openFirstAid(item, onClose) {
+  let extraClean = null;
   let html = '<div class="aid-head"><span class="aid-ic">' + item.icon + "</span><div>" +
     "<h3>" + item.title + '</h3><div class="aid-desc">' + item.desc + "</div></div></div>";
   if (item.breathing) {
     html += '<div class="breath-box small" id="breathBox"><div class="breath-phase" id="breathPhase">准备</div><div class="breath-count" id="breathCount"></div></div>' +
       '<div class="breath-meta" id="breathRound"></div>';
+  }
+  if (item.muyu) {
+    html += '<div class="muyu-stage" id="muyuStage">' +
+      '<div class="muyu-btn" id="muyuBtn" title="点我或按 Enter">🪘</div>' +
+      '<div class="muyu-count" id="muyuCount">今日功德：0</div>' +
+      '<div class="muyu-hint">点木鱼，或按 Enter 敲一下</div>' +
+      "</div>";
+  }
+  if (item.divine) {
+    html += '<div class="divine-box" id="divineBox">' +
+      '<div class="divine-empty" id="divineEmpty">🙏 心诚则灵<br><small>按 Enter 或点下面的按钮求一签</small></div>' +
+      '<div class="divine-result hidden" id="divineResult"></div>' +
+      '<button class="btn ghost block" id="divineBtn" style="margin-top:12px">🔮 求一签（Enter）</button>' +
+      "</div>";
   }
   if (item.urge) {
     html += '<div class="urge-box"><div class="urge-time" id="urgeTime">60</div><div class="urge-cap" id="urgeCap">看着数字往下走，什么都不用做</div></div>' +
@@ -4801,10 +4824,86 @@ function openFirstAid(item, onClose) {
       '<button class="btn primary" id="urgeStay">继续手里的事</button>' +
       "</div>";
   }
-  html += '<ol class="aid-steps">' + item.steps.map(s => "<li>" + s + "</li>").join("") + "</ol>" +
-    '<div class="modal-actions"><button class="btn primary" data-close="1">' + (item.urge ? "先这样" : "我练完了") + "</button></div>";
-  openModal(html, () => { stopBreathing(); stopUrge(); if (onClose) onClose(); });
+  if (item.steps && item.steps.length) {
+    html += '<ol class="aid-steps">' + item.steps.map(s => "<li>" + s + "</li>").join("") + "</ol>";
+  }
+  html += '<div class="modal-actions"><button class="btn primary" data-close="1">' + (item.urge ? "先这样" : "我练完了") + "</button></div>";
+  openModal(html, () => { stopBreathing(); stopUrge(); if (extraClean) extraClean(); if (onClose) onClose(); });
   if (item.breathing) startBreathing();
+  if (item.muyu) {
+    const MUYU_FLOATS = ["功德 +1", "心静 +1", "内耗 -1", "平和 +1", "烦没了 +1"];
+    const MUYU_MILES = {
+      10: "十连击达成 🙏 但功德不在次数，在你刚才那几秒的安静里",
+      30: "手敲木鱼，心敲内耗。30 下够本了，回去干点正事也行",
+      50: "功德圆满 🪘 带着这点安静，回到刚才的事情上吧",
+    };
+    let muyuCount = 0;
+    const knock = () => {
+      muyuCount++;
+      const c = $id("muyuCount");
+      if (c) c.textContent = "今日功德：" + muyuCount;
+      const fish = $id("muyuBtn");
+      if (fish) { fish.classList.remove("hit"); void fish.offsetWidth; fish.classList.add("hit"); }
+      const stage = $id("muyuStage");
+      if (stage) {
+        const f = document.createElement("span");
+        f.className = "muyu-float";
+        f.textContent = MUYU_FLOATS[Math.floor(Math.random() * MUYU_FLOATS.length)];
+        f.style.left = (18 + Math.random() * 60) + "%";
+        stage.appendChild(f);
+        setTimeout(() => f.remove(), 900);
+      }
+      const mile = MUYU_MILES[muyuCount];
+      if (mile) toast(mile);
+    };
+    bind("muyuBtn", "click", knock);
+    const muyuKey = (e) => {
+      if (e.key !== "Enter" || e.isComposing) return;
+      const t = e.target;
+      if (t && t.tagName && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT" || t.tagName === "BUTTON")) return;
+      e.preventDefault();
+      knock();
+    };
+    document.addEventListener("keydown", muyuKey);
+    extraClean = () => document.removeEventListener("keydown", muyuKey);
+  }
+  if (item.divine) {
+    const FORTUNES = [
+      { lv: "上上签", name: "静水流深", poem: "此事宜缓不宜急，慢慢做反而快。", note: "你不是落后了，是在攒一个大招。" },
+      { lv: "上上签", name: "否极泰来", poem: "运气正在充值，进度条已到 99%。", note: "坚持一下，系统马上刷新。" },
+      { lv: "上上签", name: "心宽路宽", poem: "把标准放低一档，路立刻宽了三倍。", note: "不是你不行，是标准太凶了。" },
+      { lv: "上签", name: "风来相助", poem: "今天有人会帮你，别不好意思开口。", note: "求助不丢人，问一句省一小时。" },
+      { lv: "上签", name: "小步即胜", poem: "不用做完，做十分钟就算赢。", note: "启动比完美重要，今天的 KPI 是开始。" },
+      { lv: "上签", name: "雨过天晴", poem: "刚才的烦躁是阵雨天，伞已经在路上了。", note: "情绪会来也会走，你现在只需要等一等。" },
+      { lv: "上签", name: "旧路重通", poem: "以前做过的事，今天再做一次也不难。", note: "你有经验，别被此刻的慌张骗了。" },
+      { lv: "上签", name: "吃好睡好", poem: "今日运势全看晚饭，先去好好吃饭。", note: "大脑一半的坏情绪，是饿出来的。" },
+      { lv: "上签", name: "心安归处", poem: "今天允许你什么都不想，发呆也是养生。", note: "休息不是偷懒，是给明天的自己存钱。" },
+      { lv: "中平签", name: "茶要慢品", poem: "今日诸事平常，平常即是福气。", note: "没有坏消息的一天，就是好消息。" },
+      { lv: "中平签", name: "雾中行船", poem: "看不清远方没关系，看清脚下三米就能走。", note: "计划赶不上变化，先走一步算一步。" },
+    ];
+    const draw = () => {
+      const box = $id("divineResult");
+      if (!box) return;
+      const f = FORTUNES[Math.floor(Math.random() * FORTUNES.length)];
+      const empty = $id("divineEmpty");
+      if (empty) empty.classList.add("hidden");
+      box.classList.remove("hidden");
+      box.innerHTML = '<div class="divine-lv">' + f.lv + '</div>' +
+        '<div class="divine-poem">「' + f.name + "」<br>" + f.poem + '</div>' +
+        '<div class="divine-note">解曰：' + f.note + "</div>";
+      box.classList.remove("shake"); void box.offsetWidth; box.classList.add("shake");
+    };
+    bind("divineBtn", "click", (e) => { draw(); if (e.currentTarget && e.currentTarget.blur) e.currentTarget.blur(); });
+    const divineKey = (e) => {
+      if (e.key !== "Enter" || e.isComposing) return;
+      const t = e.target;
+      if (t && t.tagName && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT" || t.tagName === "BUTTON")) return;
+      e.preventDefault();
+      draw();
+    };
+    document.addEventListener("keydown", divineKey);
+    extraClean = () => document.removeEventListener("keydown", divineKey);
+  }
   if (item.urge) {
     /* 冲动冲浪 60 秒：按时间戳算，切走再回来也准 */
     urge = { endAt: Date.now() + 60000, intervalId: null };
